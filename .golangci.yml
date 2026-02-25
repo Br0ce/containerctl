@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  enable:
+    - gosec
+    - govet
+    - importas
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unconvert
+    - unused
+    - sloglint
+
+  disable:
+    - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
