@@ -16,7 +16,7 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("create client: %w", err)
 	}
 
-	ids, err := cli.All(ctx)
+	shorts, err := cli.All(ctx)
 	if err != nil {
 		return fmt.Errorf("list containers: %w", err)
 	}
@@ -43,19 +43,21 @@ func Run(ctx context.Context) error {
 		SetSelectable(true, false)
 	table.SetBorder(true).SetTitle(" Containers ")
 
-	table.SetCell(0, 0,
-		tview.NewTableCell("ID").
-			SetTextColor(tcell.ColorYellow).
-			SetAlign(tview.AlignLeft).
-			SetSelectable(false).
-			SetExpansion(1))
-
-	for row, id := range ids {
-		table.SetCell(row+1, 0,
-			tview.NewTableCell(id).
-				SetTextColor(tcell.ColorWhite).
+	headers := []string{"ID", "Name", "Image", "Status"}
+	for col, h := range headers {
+		table.SetCell(0, col,
+			tview.NewTableCell(h).
+				SetTextColor(tcell.ColorYellow).
 				SetAlign(tview.AlignLeft).
+				SetSelectable(false).
 				SetExpansion(1))
+	}
+
+	for row, short := range shorts {
+		table.SetCell(row+1, 0, tview.NewTableCell(short.ID[:12]).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
+		table.SetCell(row+1, 1, tview.NewTableCell(short.Name).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
+		table.SetCell(row+1, 2, tview.NewTableCell(short.Image).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
+		table.SetCell(row+1, 3, tview.NewTableCell(short.Status).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
 	}
 
 	layout := tview.NewFlex().

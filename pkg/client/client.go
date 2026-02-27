@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/docker/docker/api/types/container"
+	dcontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+
+	"github.com/Br0ce/cctl/pkg/container"
 )
 
 type Client struct {
@@ -20,16 +22,22 @@ func New() (*Client, error) {
 	return &Client{client: cli}, nil
 }
 
-func (c *Client) All(ctx context.Context) ([]string, error) {
-	defer c.client.Close()
-	containers, err := c.client.ContainerList(ctx, container.ListOptions{All: false})
+func (cli *Client) All(ctx context.Context) ([]container.Short, error) {
+	defer cli.client.Close()
+	containers, err := cli.client.ContainerList(ctx, dcontainer.ListOptions{All: false})
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
 
-	var ids []string
-	for _, container := range containers {
-		ids = append(ids, container.ID)
+	var shorts []container.Short
+	for _, cont := range containers {
+		shorts = append(shorts, container.Short{
+			ID:     cont.ID,
+			Name:   cont.Names[0],
+			Image:  cont.Image,
+			Status: cont.Status,
+		})
 	}
-	return ids, nil
+
+	return shorts, nil
 }
