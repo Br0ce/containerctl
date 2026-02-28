@@ -36,7 +36,7 @@ func PopulateLogsView(view *tview.TextView, logs client.LogSeq) {
 			sb.WriteString("[red]error: " + err.Error() + "[-]\n")
 			break
 		}
-		sb.WriteString(line + "\n")
+		sb.WriteString(tview.TranslateANSI(line) + "\n")
 	}
 	view.SetText(sb.String())
 }

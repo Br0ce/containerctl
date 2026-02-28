@@ -25,7 +25,7 @@ func Run(ctx context.Context) error {
 
 	// Header bar: key bindings on the left, app title on the right.
 	keyBindings := tview.NewTextView().
-		SetText("<q> Quit  <l> Inspect  <Esc> Back").
+		SetText("<q> Quit  <l> Logs  <Esc> Back").
 		SetTextColor(tcell.ColorYellow)
 
 	appTitle := tview.NewTextView().

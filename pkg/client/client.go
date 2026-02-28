@@ -9,6 +9,7 @@ import (
 
 	dcont "github.com/docker/docker/api/types/container"
 	dcli "github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 
 	"github.com/Br0ce/cctl/pkg/container"
 )
@@ -61,7 +62,7 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 
 		pr, pw := io.Pipe()
 		go func() {
-			_, err := io.Copy(pw, rc)
+			_, err := stdcopy.StdCopy(pw, pw, rc)
 			pw.CloseWithError(err)
 		}()
 

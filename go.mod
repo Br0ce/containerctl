@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	github.com/docker/docker v28.5.2+incompatible
+	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/rivo/tview v0.42.0
 	github.com/spf13/cobra v1.10.2
-	github.com/gdamore/tcell/v2 v2.13.8
 )
 
 require (
