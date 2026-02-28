@@ -45,6 +45,7 @@ func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
 			Name:   cont.Names[0],
 			Image:  cont.Image,
 			Status: cont.Status,
+			State:  container.StateFrom(cont.State),
 		})
 	}
 
