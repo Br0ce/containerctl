@@ -22,7 +22,7 @@ func New() (*Client, error) {
 	return &Client{client: cli}, nil
 }
 
-func (cli *Client) All(ctx context.Context) ([]container.Short, error) {
+func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
 	defer cli.client.Close()
 	containers, err := cli.client.ContainerList(ctx, dcontainer.ListOptions{All: false})
 	if err != nil {

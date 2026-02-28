@@ -16,9 +16,9 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("create client: %w", err)
 	}
 
-	shorts, err := cli.All(ctx)
+	shorts, err := cli.Shorts(ctx)
 	if err != nil {
-		return fmt.Errorf("list containers: %w", err)
+		return fmt.Errorf("list short description of containers: %w", err)
 	}
 
 	app := tview.NewApplication()
