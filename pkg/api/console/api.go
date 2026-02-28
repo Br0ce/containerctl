@@ -3,6 +3,7 @@ package console
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -11,14 +12,12 @@ import (
 )
 
 func Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	cli, err := client.New()
 	if err != nil {
 		return fmt.Errorf("create client: %w", err)
-	}
-
-	shorts, err := cli.Shorts(ctx)
-	if err != nil {
-		return fmt.Errorf("list short description of containers: %w", err)
 	}
 
 	app := tview.NewApplication()
@@ -43,22 +42,23 @@ func Run(ctx context.Context) error {
 		SetSelectable(true, false)
 	table.SetBorder(true).SetTitle(" Containers ")
 
-	headers := []string{"ID", "Name", "Image", "Status"}
-	for col, h := range headers {
-		table.SetCell(0, col,
-			tview.NewTableCell(h).
-				SetTextColor(tcell.ColorYellow).
-				SetAlign(tview.AlignLeft).
-				SetSelectable(false).
-				SetExpansion(1))
-	}
+	// Initial synchronous load before the app starts.
+	PopulateShortsTable(ctx, table, cli)
 
-	for row, short := range shorts {
-		table.SetCell(row+1, 0, tview.NewTableCell(short.ID[:12]).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
-		table.SetCell(row+1, 1, tview.NewTableCell(short.Name).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
-		table.SetCell(row+1, 2, tview.NewTableCell(short.Image).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
-		table.SetCell(row+1, 3, tview.NewTableCell(short.Status).SetTextColor(tcell.ColorWhite).SetAlign(tview.AlignLeft).SetExpansion(1))
-	}
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				app.QueueUpdateDraw(func() {
+					PopulateShortsTable(ctx, table, cli)
+				})
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
@@ -67,6 +67,7 @@ func Run(ctx context.Context) error {
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Rune() == 'q' {
+			cancel()
 			app.Stop()
 			return nil
 		}

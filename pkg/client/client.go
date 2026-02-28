@@ -4,18 +4,18 @@ import (
 	"context"
 	"fmt"
 
-	dcontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	dcont "github.com/docker/docker/api/types/container"
+	dcli "github.com/docker/docker/client"
 
 	"github.com/Br0ce/cctl/pkg/container"
 )
 
 type Client struct {
-	client client.APIClient
+	client dcli.APIClient
 }
 
 func New() (*Client, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := dcli.NewClientWithOpts(dcli.FromEnv, dcli.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, err
 	}
@@ -24,7 +24,7 @@ func New() (*Client, error) {
 
 func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
 	defer cli.client.Close()
-	containers, err := cli.client.ContainerList(ctx, dcontainer.ListOptions{All: false})
+	containers, err := cli.client.ContainerList(ctx, dcont.ListOptions{All: false})
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
