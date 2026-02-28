@@ -24,7 +24,7 @@ func Run(ctx context.Context) error {
 
 	// Header bar: key bindings on the left, app title on the right.
 	keyBindings := tview.NewTextView().
-		SetText("<q> Quit").
+		SetText("<q> Quit  <l> Inspect  <Esc> Back").
 		SetTextColor(tcell.ColorYellow)
 
 	appTitle := tview.NewTextView().
@@ -42,6 +42,18 @@ func Run(ctx context.Context) error {
 		SetSelectable(true, false)
 	table.SetBorder(true).SetTitle(" Containers ")
 
+	// Metadata view shown when the user presses "l" on a row.
+	metaView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true)
+	metaView.SetBorder(true).SetTitle(" Container Metadata ")
+
+	// Pages holds both views and exposes one at a time.
+	// "table" is the default visible page; "meta" starts hidden.
+	pages := tview.NewPages().
+		AddPage("table", table, true, true).
+		AddPage("meta", metaView, true, false)
+
 	// Initial synchronous load before the app starts.
 	PopulateShortsTable(ctx, table, cli)
 
@@ -52,7 +64,11 @@ func Run(ctx context.Context) error {
 			select {
 			case <-ticker.C:
 				app.QueueUpdateDraw(func() {
-					PopulateShortsTable(ctx, table, cli)
+					// Only refresh while the table is the active page.
+					name, _ := pages.GetFrontPage()
+					if name == "table" {
+						PopulateShortsTable(ctx, table, cli)
+					}
 				})
 			case <-ctx.Done():
 				return
@@ -63,12 +79,39 @@ func Run(ctx context.Context) error {
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(header, 1, 0, false).
-		AddItem(table, 0, 1, true)
+		AddItem(pages, 0, 1, true)
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Rune() == 'q' {
-			cancel()
-			app.Stop()
+		switch event.Key() {
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'q':
+				cancel()
+				app.Stop()
+				return nil
+
+			case 'l':
+				// Only act when the table is the front page.
+				name, _ := pages.GetFrontPage()
+				if name != "table" {
+					return nil
+				}
+				row, _ := table.GetSelection()
+				if row < 1 {
+					// row 0 is the header — nothing to inspect.
+					return nil
+				}
+				id := table.GetCell(row, 0).GetReference().(string)
+				PopulateLogsView(metaView, cli.Logs(ctx, id))
+				pages.SwitchToPage("meta")
+				app.SetFocus(metaView)
+				return nil
+			}
+
+		case tcell.KeyEscape:
+			// Return to the container table from any page.
+			pages.SwitchToPage("table")
+			app.SetFocus(table)
 			return nil
 		}
 		return event
