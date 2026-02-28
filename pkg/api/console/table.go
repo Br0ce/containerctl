@@ -1,19 +1,15 @@
 package console
 
 import (
-	"context"
 	"strings"
 
 	"github.com/Br0ce/cctl/pkg/client"
+	"github.com/Br0ce/cctl/pkg/container"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-func PopulateShortsTable(ctx context.Context, table *tview.Table, cli *client.Client) {
-	shorts, err := cli.Shorts(ctx)
-	if err != nil {
-		// return fmt.Errorf("list short description of containers: %w", err)
-	}
+func PopulateShortsTable(table *tview.Table, shorts []container.Short) {
 	table.Clear()
 
 	for col, h := range []string{"ID", "Name", "Image", "Status"} {

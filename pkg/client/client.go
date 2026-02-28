@@ -27,8 +27,11 @@ func New() (*Client, error) {
 	return &Client{client: cli}, nil
 }
 
+func (cli *Client) Close() error {
+	return cli.client.Close()
+}
+
 func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
-	defer cli.client.Close()
 	containers, err := cli.client.ContainerList(ctx, dcont.ListOptions{All: false})
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)

@@ -19,6 +19,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create client: %w", err)
 	}
+	defer cli.Close()
 
 	app := tview.NewApplication()
 
@@ -55,7 +56,9 @@ func Run(ctx context.Context) error {
 		AddPage("meta", metaView, true, false)
 
 	// Initial synchronous load before the app starts.
-	PopulateShortsTable(ctx, table, cli)
+	if shorts, err := cli.Shorts(ctx); err == nil {
+		PopulateShortsTable(table, shorts)
+	}
 
 	go func() {
 		ticker := time.NewTicker(3 * time.Second)
@@ -67,7 +70,9 @@ func Run(ctx context.Context) error {
 					// Only refresh while the table is the active page.
 					name, _ := pages.GetFrontPage()
 					if name == "table" {
-						PopulateShortsTable(ctx, table, cli)
+						if shorts, err := cli.Shorts(ctx); err == nil {
+							PopulateShortsTable(table, shorts)
+						}
 					}
 				})
 			case <-ctx.Done():
