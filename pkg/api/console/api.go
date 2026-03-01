@@ -11,6 +11,8 @@ import (
 	"github.com/Br0ce/cctl/pkg/client"
 )
 
+const updateRate = 3 * time.Second
+
 func Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -21,11 +23,10 @@ func Run(ctx context.Context) error {
 	}
 	defer cli.Close()
 
-	app := tview.NewApplication()
+	app := tview.NewApplication().EnableMouse(true)
 
-	// Header bar: key bindings on the left, app title on the right.
 	keyBindings := tview.NewTextView().
-		SetText("<q> Quit  <l> Logs  <Esc> Back").
+		SetText("<q>   Quit\n<l>   Logs\n<Esc> Back").
 		SetTextColor(tcell.ColorYellow)
 
 	appTitle := tview.NewTextView().
@@ -37,53 +38,24 @@ func Run(ctx context.Context) error {
 		AddItem(keyBindings, 0, 1, false).
 		AddItem(appTitle, 0, 1, false)
 
-	// Container table with border frame.
-	table := tview.NewTable().
-		SetBorders(false).
-		SetSelectable(true, false)
-	table.SetBorder(true).SetTitle(" Containers ")
+	containersView := CreateContainersView()
+	logsView := CreateLogsView()
 
-	// Metadata view shown when the user presses "l" on a row.
-	metaView := tview.NewTextView().
-		SetDynamicColors(true).
-		SetScrollable(true)
-	metaView.SetBorder(true).SetTitle(" Container Metadata ")
-
-	// Pages holds both views and exposes one at a time.
-	// "table" is the default visible page; "meta" starts hidden.
 	pages := tview.NewPages().
-		AddPage("table", table, true, true).
-		AddPage("meta", metaView, true, false)
+		AddPage(containersPage, containersView, true, true).
+		AddPage(logsPage, logsView, true, false)
 
 	// Initial synchronous load before the app starts.
 	if shorts, err := cli.Shorts(ctx); err == nil {
-		PopulateShortsTable(table, shorts)
+		PopulateContainersView(containersView, shorts)
 	}
 
-	go func() {
-		ticker := time.NewTicker(3 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				app.QueueUpdateDraw(func() {
-					// Only refresh while the table is the active page.
-					name, _ := pages.GetFrontPage()
-					if name == "table" {
-						if shorts, err := cli.Shorts(ctx); err == nil {
-							PopulateShortsTable(table, shorts)
-						}
-					}
-				})
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	// Start the background update loop.
+	go update(ctx, app, pages, containersView, cli, updateRate)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(header, 1, 0, false).
+		AddItem(header, 3, 0, false).
 		AddItem(pages, 0, 1, true)
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -96,31 +68,52 @@ func Run(ctx context.Context) error {
 				return nil
 
 			case 'l':
-				// Only act when the table is the front page.
+				// Only act when the table is the shorts page.
 				name, _ := pages.GetFrontPage()
-				if name != "table" {
+				if name != containersPage {
 					return nil
 				}
-				row, _ := table.GetSelection()
+				row, _ := containersView.GetSelection()
 				if row < 1 {
 					// row 0 is the header — nothing to inspect.
 					return nil
 				}
-				id := table.GetCell(row, 0).GetReference().(string)
-				PopulateLogsView(metaView, cli.Logs(ctx, id))
-				pages.SwitchToPage("meta")
-				app.SetFocus(metaView)
+				id := containersView.GetCell(row, 0).GetReference().(string)
+				PopulateLogsView(logsView, cli.Logs(ctx, id))
+				pages.SwitchToPage(logsPage)
+				app.SetFocus(logsView)
 				return nil
 			}
 
 		case tcell.KeyEscape:
-			// Return to the container table from any page.
-			pages.SwitchToPage("table")
-			app.SetFocus(table)
+			// Return to the shorts table from any page.
+			pages.SwitchToPage(containersPage)
+			app.SetFocus(containersView)
 			return nil
 		}
 		return event
 	})
 
 	return app.SetRoot(layout, true).Run()
+}
+
+func update(ctx context.Context, app *tview.Application, pages *tview.Pages, containersView *tview.Table, cli *client.Client, rate time.Duration) {
+	ticker := time.NewTicker(rate)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			app.QueueUpdateDraw(func() {
+				// Only refresh while shorts is the active page.
+				name, _ := pages.GetFrontPage()
+				if name == containersPage {
+					if shorts, err := cli.Shorts(ctx); err == nil {
+						PopulateContainersView(containersView, shorts)
+					}
+				}
+			})
+		case <-ctx.Done():
+			return
+		}
+	}
 }

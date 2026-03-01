@@ -1,27 +1,23 @@
 package console
 
 import (
-	"strings"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/Br0ce/cctl/pkg/client"
 	"github.com/Br0ce/cctl/pkg/container"
 )
 
-func stateDot(s container.State) string {
-	switch s {
-	case container.Green:
-		return "[green]●[-]"
-	case container.Red:
-		return "[red]●[-]"
-	default:
-		return "[yellow]●[-]"
-	}
+const containersPage = "containers"
+
+func CreateContainersView() *tview.Table {
+	shortsView := tview.NewTable().
+		SetBorders(false).
+		SetSelectable(true, false)
+	shortsView.SetBorder(true).SetTitle(" Containers ")
+	return shortsView
 }
 
-func PopulateShortsTable(table *tview.Table, shorts []container.Short) {
+func PopulateContainersView(table *tview.Table, shorts []container.Short) {
 	table.Clear()
 
 	for col, h := range []string{"ID", "Name", "Image", "Status", "State"} {
@@ -42,14 +38,13 @@ func PopulateShortsTable(table *tview.Table, shorts []container.Short) {
 	}
 }
 
-func PopulateLogsView(view *tview.TextView, logs client.LogSeq) {
-	var sb strings.Builder
-	for line, err := range logs {
-		if err != nil {
-			sb.WriteString("[red]error: " + err.Error() + "[-]\n")
-			break
-		}
-		sb.WriteString(tview.TranslateANSI(line) + "\n")
+func stateDot(s container.State) string {
+	switch s {
+	case container.Green:
+		return "[green]●[-]"
+	case container.Red:
+		return "[red]●[-]"
+	default:
+		return "[yellow]●[-]"
 	}
-	view.SetText(sb.String())
 }
