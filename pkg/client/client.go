@@ -70,7 +70,10 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 		scanner := bufio.NewScanner(pr)
 		for scanner.Scan() {
 			if !yield(scanner.Text(), nil) {
-				pr.Close()
+				err = pr.Close()
+				if err != nil {
+					fmt.Printf("close log stream: %v\n", err)
+				}
 				return
 			}
 		}

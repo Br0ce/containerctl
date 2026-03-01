@@ -9,10 +9,10 @@ const (
 )
 
 func StateFrom(status string) State {
-	switch {
-	case status == "running":
+	switch status {
+	case "running":
 		return Green
-	case status == "exited":
+	case "exited":
 		return Red
 	default:
 		return YELLOW
