@@ -27,7 +27,18 @@ func Run(ctx context.Context) error {
 
 	keyBindings := tview.NewTextView().
 		SetText("<q>   Quit\n<l>   Logs\n<Esc> Back").
+		SetTextAlign(tview.AlignCenter).
 		SetTextColor(tcell.ColorYellow)
+
+	dhost, err := cli.DaemonHostname()
+	if err != nil {
+		return fmt.Errorf("get daemon hostname: %w", err)
+	}
+
+	contextView := tview.NewTextView().
+		SetText(fmt.Sprintf("Daemon Host: %s\nApi Version: %s", dhost, cli.DaemonVersion())).
+		SetTextAlign(tview.AlignLeft).
+		SetTextColor(tcell.ColorAqua)
 
 	appTitle := tview.NewTextView().
 		SetText("cctl").
@@ -35,6 +46,7 @@ func Run(ctx context.Context) error {
 		SetTextColor(tcell.ColorWhite)
 
 	header := tview.NewFlex().
+		AddItem(contextView, 0, 1, false).
 		AddItem(keyBindings, 0, 1, false).
 		AddItem(appTitle, 0, 1, false)
 

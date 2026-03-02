@@ -21,7 +21,8 @@ type Client struct {
 }
 
 func New() (*Client, error) {
-	cli, err := dcli.NewClientWithOpts(dcli.FromEnv, dcli.WithAPIVersionNegotiation())
+	opts := []dcli.Opt{dcli.FromEnv, dcli.WithAPIVersionNegotiation()}
+	cli, err := dcli.NewClientWithOpts(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +64,7 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 
 		pr, pw := io.Pipe()
 		go func() {
+			// StdCopy demultiplexes the stream, i.e. stdout and stderr.
 			_, err := stdcopy.StdCopy(pw, pw, rc)
 			pw.CloseWithError(err)
 		}()
@@ -81,4 +83,16 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 			yield("", err)
 		}
 	}
+}
+
+func (cli *Client) DaemonHostname() (string, error) {
+	url, err := dcli.ParseHostURL(cli.client.DaemonHost())
+	if err != nil {
+		return "", fmt.Errorf("parse host URL: %w", err)
+	}
+	return url.Hostname(), nil
+}
+
+func (cli *Client) DaemonVersion() string {
+	return cli.client.ClientVersion()
 }

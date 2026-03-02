@@ -27,4 +27,5 @@ func PopulateLogsView(view *tview.TextView, logs client.LogSeq) {
 		sb.WriteString(tview.TranslateANSI(line) + "\n")
 	}
 	view.SetText(sb.String())
+	view.ScrollToEnd()
 }
