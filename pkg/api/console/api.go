@@ -57,17 +57,24 @@ func Run(ctx context.Context) error {
 		AddPage(containersPage, containersView, true, true).
 		AddPage(logsPage, logsView, true, false)
 
+	statusBar := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft)
+
 	// Initial synchronous load before the app starts.
-	if shorts, err := cli.Shorts(ctx); err == nil {
+	if shorts, err := cli.Shorts(ctx); err != nil {
+		statusBar.SetText("[red]Error: " + err.Error() + "[-]")
+	} else {
 		PopulateContainersView(containersView, shorts)
 	}
 
 	// Start the background update loop.
-	go update(ctx, app, pages, containersView, cli, updateRate)
+	go update(ctx, app, pages, containersView, statusBar, cli, updateRate)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(header, 3, 0, false).
+		AddItem(statusBar, 1, 0, false).
 		AddItem(pages, 0, 1, true)
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -109,7 +116,7 @@ func Run(ctx context.Context) error {
 	return app.SetRoot(layout, true).Run()
 }
 
-func update(ctx context.Context, app *tview.Application, pages *tview.Pages, containersView *tview.Table, cli *client.Client, rate time.Duration) {
+func update(ctx context.Context, app *tview.Application, pages *tview.Pages, containersView *tview.Table, statusBar *tview.TextView, cli *client.Client, rate time.Duration) {
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
 	for {
@@ -119,7 +126,10 @@ func update(ctx context.Context, app *tview.Application, pages *tview.Pages, con
 				// Only refresh while shorts is the active page.
 				name, _ := pages.GetFrontPage()
 				if name == containersPage {
-					if shorts, err := cli.Shorts(ctx); err == nil {
+					if shorts, err := cli.Shorts(ctx); err != nil {
+						statusBar.SetText("[red]Error: " + err.Error() + "[-]")
+					} else {
+						statusBar.Clear()
 						PopulateContainersView(containersView, shorts)
 					}
 				}
