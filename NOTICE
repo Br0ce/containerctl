@@ -1,0 +1,73 @@
+containerctl
+Copyright 2026 Niklas Beck
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+
+-------------------------------------------------------------------------------
+Third-Party Software Notices
+-------------------------------------------------------------------------------
+
+This product includes software developed by third parties. Their licenses are
+preserved in the vendor/ directory alongside their respective source code.
+
+-------------------------------------------------------------------------------
+github.com/docker/docker (Apache 2.0)
+-------------------------------------------------------------------------------
+
+Docker
+Copyright 2012-2017 Docker, Inc.
+
+This product includes software developed at Docker, Inc. (https://www.docker.com).
+
+This product contains software (https://github.com/creack/pty) developed
+by Keith Rarick, licensed under the MIT License.
+
+The following is courtesy of our legal counsel:
+
+Use and transfer of Docker may be subject to certain restrictions by the
+United States and other governments.
+It is your responsibility to ensure that your use and/or transfer does not
+violate applicable laws.
+
+For more information, please see https://www.bis.doc.gov
+
+See also https://www.apache.org/dev/crypto.html and/or seek legal counsel.
+
+-------------------------------------------------------------------------------
+Other Third-Party Dependencies
+-------------------------------------------------------------------------------
+
+The following dependencies are used under their respective licenses (MIT, BSD,
+or Apache 2.0). Full license texts are available in the vendor/ directory.
+
+  github.com/Microsoft/go-winio          MIT     Copyright (c) 2015 Microsoft
+  github.com/cespare/xxhash/v2           MIT     Copyright (c) 2016 Caleb Spare
+  github.com/containerd/errdefs          Apache 2.0
+  github.com/containerd/errdefs/pkg      Apache 2.0
+  github.com/distribution/reference      Apache 2.0
+  github.com/docker/go-connections       Apache 2.0
+  github.com/docker/go-units             Apache 2.0
+  github.com/felixge/httpsnoop           MIT     Copyright (c) 2016 Felix Geisendörfer
+  github.com/gdamore/encoding            Apache 2.0
+  github.com/gdamore/tcell/v2            Apache 2.0
+  github.com/go-logr/logr                Apache 2.0
+  github.com/go-logr/stdr                Apache 2.0
+  github.com/inconshreveable/mousetrap   MIT     Copyright (c) 2013 Alan Shreve
+  github.com/lucasb-eyer/go-colorful     MIT     Copyright (c) 2013 Lucas Beyer
+  github.com/moby/docker-image-spec      Apache 2.0
+  github.com/opencontainers/go-digest    Apache 2.0
+  github.com/opencontainers/image-spec   Apache 2.0
+  github.com/pkg/errors                  BSD 2-Clause  Copyright (c) 2015, Dave Cheney
+  github.com/rivo/tview                  MIT     Copyright (c) 2018 Oliver Kuederle
+  github.com/rivo/uniseg                 MIT     Copyright (c) 2019 Oliver Kuederle
+  github.com/spf13/cobra                 Apache 2.0
+  github.com/spf13/pflag                 BSD 3-Clause
+  go.opentelemetry.io/auto/sdk           Apache 2.0
+  go.opentelemetry.io/contrib/...        Apache 2.0
+  go.opentelemetry.io/otel               Apache 2.0
+  go.opentelemetry.io/otel/metric        Apache 2.0
+  go.opentelemetry.io/otel/trace         Apache 2.0
+  golang.org/x/sys                       BSD 3-Clause  Copyright 2009 The Go Authors
+  golang.org/x/term                      BSD 3-Clause  Copyright 2009 The Go Authors
+  golang.org/x/text                      BSD 3-Clause  Copyright 2009 The Go Authors
