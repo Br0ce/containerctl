@@ -20,6 +20,7 @@ type UI struct {
 	container *view.Container
 	errBar    *view.ErrorBar
 	header    *view.Header
+	body      *tview.Pages
 	log       *view.Log
 }
 
@@ -39,6 +40,10 @@ func New() (*UI, error) {
 	log := view.NewLog()
 	errBar := view.NewErrorBar()
 
+	body := tview.NewPages().
+		AddPage(container.Name(), container, true, true).
+		AddPage(log.Name(), log, true, false)
+
 	return &UI{
 		app:       tview.NewApplication().EnableMouse(true),
 		cli:       cli,
@@ -46,13 +51,20 @@ func New() (*UI, error) {
 		container: container,
 		log:       log,
 		errBar:    errBar,
+		body:      body,
 	}, nil
 }
 
 // Run starts the TUI application and blocks until it exits.
+// The caller is responsible for calling Close() on the UI to clean up
+// resources after Run() returns.
 func (ui *UI) Run(ctx context.Context) error {
+	// Set up a cancellable context for input capture to cancel the update loop.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	go ui.updateLoop(ctx, updateRate)
+	ui.inputCapture(ctx, cancel)
 
 	// Initial synchronous load before the app starts.
 	if shorts, err := ui.cli.Shorts(ctx); err != nil {
@@ -61,29 +73,21 @@ func (ui *UI) Run(ctx context.Context) error {
 		ui.container.Populate(shorts)
 	}
 
-	pages := tview.NewPages().
-		AddPage(ui.container.Name(), ui.container, true, true).
-		AddPage(ui.log.Name(), ui.log, true, false)
-
-	layout := tview.NewFlex().
+	root := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(ui.header, 3, 0, false).
 		AddItem(ui.errBar, 1, 0, false).
-		AddItem(pages, 0, 1, true)
+		AddItem(ui.body, 0, 1, true)
 
-	ui.inputCapture(ctx, pages, cancel)
-	// Start the background update loop.
-	go ui.update(ctx, pages, updateRate)
-
-	return ui.app.SetRoot(layout, true).Run()
+	return ui.app.SetRoot(root, true).Run()
 }
 
 func (ui *UI) Close() error {
 	return ui.cli.Close()
 }
 
-// update periodically refreshes the app contents.
-func (ui *UI) update(ctx context.Context, pages *tview.Pages, rate time.Duration) {
+// updateLoop periodically refreshes the app contents. The loop is cancellable via the provided context.
+func (ui *UI) updateLoop(ctx context.Context, rate time.Duration) {
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
 	for {
@@ -91,7 +95,7 @@ func (ui *UI) update(ctx context.Context, pages *tview.Pages, rate time.Duration
 		case <-ticker.C:
 			ui.app.QueueUpdateDraw(func() {
 				// Only refresh while containers is the active page.
-				name, _ := pages.GetFrontPage()
+				name, _ := ui.body.GetFrontPage()
 				if name == ui.container.Name() {
 					if shorts, err := ui.cli.Shorts(ctx); err != nil {
 						ui.errBar.Populate(err)
@@ -108,7 +112,7 @@ func (ui *UI) update(ctx context.Context, pages *tview.Pages, rate time.Duration
 }
 
 // inputCapture sets up global keybindings for the app.
-func (ui *UI) inputCapture(ctx context.Context, pages *tview.Pages, cancel context.CancelFunc) {
+func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 	ui.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyRune:
@@ -119,8 +123,8 @@ func (ui *UI) inputCapture(ctx context.Context, pages *tview.Pages, cancel conte
 				return nil
 
 			case 'l':
-				// Only act when the table is the shorts page.
-				name, _ := pages.GetFrontPage()
+				// Only act when the table is the containers page.
+				name, _ := ui.body.GetFrontPage()
 				if name != ui.container.Name() {
 					return nil
 				}
@@ -131,14 +135,14 @@ func (ui *UI) inputCapture(ctx context.Context, pages *tview.Pages, cancel conte
 				}
 				id := ui.container.GetCell(row, 0).GetReference().(string)
 				ui.log.Populate(ui.cli.Logs(ctx, id))
-				pages.SwitchToPage(ui.log.Name())
+				ui.body.SwitchToPage(ui.log.Name())
 				ui.app.SetFocus(ui.log)
 				return nil
 			}
 
 		case tcell.KeyEscape:
-			// Return to the shorts table from any page.
-			pages.SwitchToPage(ui.container.Name())
+			// Return to the default page from any page.
+			ui.body.SwitchToPage(ui.container.Name())
 			ui.app.SetFocus(ui.container)
 			return nil
 		}
