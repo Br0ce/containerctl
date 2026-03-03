@@ -12,7 +12,7 @@ import (
 	dcli "github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 
-	"github.com/Br0ce/cctl/pkg/container"
+	"github.com/Br0ce/containerctl/pkg/container"
 )
 
 type LogSeq = iter.Seq2[string, error]

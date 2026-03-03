@@ -3,7 +3,7 @@ package console
 import (
 	"strings"
 
-	"github.com/Br0ce/cctl/pkg/client"
+	"github.com/Br0ce/containerctl/pkg/client"
 	"github.com/rivo/tview"
 )
 

@@ -1,17 +1,17 @@
-# cctl
+# containerctl
 
 A terminal UI for managing containers.
 
 ## Overview
 
-`cctl` provides an interactive terminal interface for working with containers, bringing the keyboard-driven, real-time experience of k9s to container management.
+`containerctl` provides a lightweigt, interactive terminal interface for working with containers.
 
 ---
 
-![Build Status](https://github.com/Br0ce/cctl/actions/workflows/ci.yml/badge.svg)
-[![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/cctl)](https://github.com/Br0ce/cctl)
-[![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/cctl.svg)](https://pkg.go.dev/github.com/Br0ce/cctl)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/cctl)](https://goreportcard.com/report/github.com/Br0ce/cctl)
+![Build Status](https://github.com/Br0ce/containerctl/actions/workflows/ci.yml/badge.svg)
+[![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/containerctl)](https://github.com/Br0ce/containerctl)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/containerctl.svg)](https://pkg.go.dev/github.com/Br0ce/containerctl)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/containerctl)](https://goreportcard.com/report/github.com/Br0ce/containerctl)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -23,18 +23,18 @@ A terminal UI for managing containers.
 ## Installation
 
 ```sh
-git clone https://github.com/Br0ce/cctl.git
-cd cctl
+git clone https://github.com/Br0ce/containerctl.git
+cd containerctl
 make setup
 make build
 ```
 
-The binary will be placed at `./bin/api`.
+The binary will be placed at `./bin/containerctl`.
 
 ## Usage
 
 ```sh
-./bin/api
+./bin/containerctl
 # or
 make run
 ```

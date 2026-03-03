@@ -4,7 +4,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/Br0ce/cctl/pkg/container"
+	"github.com/Br0ce/containerctl/pkg/container"
 )
 
 const containersPage = "containers"

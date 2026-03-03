@@ -6,11 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Br0ce/cctl/pkg/api/console"
+	"github.com/Br0ce/containerctl/pkg/api/console"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "cctl",
+	Use:   "containerctl",
 	Short: "A UI for monitoring and managing containers.",
 	Long:  "A UI for monitoring and managing local or remote containers.",
 	Run: func(cmd *cobra.Command, args []string) {

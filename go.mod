@@ -1,4 +1,4 @@
-module github.com/Br0ce/cctl
+module github.com/Br0ce/containerctl
 
 go 1.26.0
 

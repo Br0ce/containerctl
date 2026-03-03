@@ -8,7 +8,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/Br0ce/cctl/pkg/client"
+	"github.com/Br0ce/containerctl/pkg/client"
 )
 
 const updateRate = 3 * time.Second
