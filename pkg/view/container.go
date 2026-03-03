@@ -1,4 +1,4 @@
-package console
+package view
 
 import (
 	"github.com/gdamore/tcell/v2"
@@ -7,9 +7,9 @@ import (
 	"github.com/Br0ce/containerctl/pkg/container"
 )
 
-const containersPage = "containers"
+const Container = "containers"
 
-func CreateContainersView() *tview.Table {
+func NewContainer() *tview.Table {
 	shortsView := tview.NewTable().
 		SetBorders(false).
 		SetSelectable(true, false)
@@ -17,7 +17,7 @@ func CreateContainersView() *tview.Table {
 	return shortsView
 }
 
-func PopulateContainersView(table *tview.Table, shorts []container.Short) {
+func PopulateContainer(table *tview.Table, shorts []container.Short) {
 	table.Clear()
 
 	for col, h := range []string{"ID", "Name", "Image", "Status", "State"} {

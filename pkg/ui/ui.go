@@ -1,4 +1,4 @@
-package console
+package ui
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/Br0ce/containerctl/pkg/client"
+	"github.com/Br0ce/containerctl/pkg/view"
 )
 
 const updateRate = 3 * time.Second
@@ -23,58 +24,35 @@ func Run(ctx context.Context) error {
 	}
 	defer cli.Close()
 
-	app := tview.NewApplication().EnableMouse(true)
-
-	keyBindings := tview.NewTextView().
-		SetText("<q>   Quit\n<l>   Logs\n<Esc> Back").
-		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.ColorYellow)
-
 	dhost, err := cli.DaemonHostname()
 	if err != nil {
 		return fmt.Errorf("get daemon hostname: %w", err)
 	}
 
-	contextView := tview.NewTextView().
-		SetText(fmt.Sprintf("Daemon Host: %s\nApi Version: %s", dhost, cli.DaemonVersion())).
-		SetTextAlign(tview.AlignLeft).
-		SetTextColor(tcell.ColorAqua)
-
-	appTitle := tview.NewTextView().
-		SetText("cctl").
-		SetTextAlign(tview.AlignRight).
-		SetTextColor(tcell.ColorWhite)
-
-	header := tview.NewFlex().
-		AddItem(contextView, 0, 1, false).
-		AddItem(keyBindings, 0, 1, false).
-		AddItem(appTitle, 0, 1, false)
-
-	containersView := CreateContainersView()
-	logsView := CreateLogsView()
+	headerView := view.NewHeader(dhost, cli.DaemonVersion())
+	containerView := view.NewContainer()
+	logView := view.NewLog()
+	errView := view.NewErrorBar()
 
 	pages := tview.NewPages().
-		AddPage(containersPage, containersView, true, true).
-		AddPage(logsPage, logsView, true, false)
-
-	statusBar := tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextAlign(tview.AlignLeft)
+		AddPage(view.Container, containerView, true, true).
+		AddPage(view.Log, logView, true, false)
 
 	// Initial synchronous load before the app starts.
 	if shorts, err := cli.Shorts(ctx); err != nil {
-		statusBar.SetText("[red]Error: " + err.Error() + "[-]")
+		view.PopulateErrorBar(errView, err)
 	} else {
-		PopulateContainersView(containersView, shorts)
+		view.PopulateContainer(containerView, shorts)
 	}
 
+	app := tview.NewApplication().EnableMouse(true)
 	// Start the background update loop.
-	go update(ctx, app, pages, containersView, statusBar, cli, updateRate)
+	go update(ctx, app, pages, containerView, errView, cli, updateRate)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(header, 3, 0, false).
-		AddItem(statusBar, 1, 0, false).
+		AddItem(headerView, 3, 0, false).
+		AddItem(errView, 1, 0, false).
 		AddItem(pages, 0, 1, true)
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -89,25 +67,25 @@ func Run(ctx context.Context) error {
 			case 'l':
 				// Only act when the table is the shorts page.
 				name, _ := pages.GetFrontPage()
-				if name != containersPage {
+				if name != view.Container {
 					return nil
 				}
-				row, _ := containersView.GetSelection()
+				row, _ := containerView.GetSelection()
 				if row < 1 {
 					// row 0 is the header — nothing to inspect.
 					return nil
 				}
-				id := containersView.GetCell(row, 0).GetReference().(string)
-				PopulateLogsView(logsView, cli.Logs(ctx, id))
-				pages.SwitchToPage(logsPage)
-				app.SetFocus(logsView)
+				id := containerView.GetCell(row, 0).GetReference().(string)
+				view.PopulateLog(logView, cli.Logs(ctx, id))
+				pages.SwitchToPage(view.Log)
+				app.SetFocus(logView)
 				return nil
 			}
 
 		case tcell.KeyEscape:
 			// Return to the shorts table from any page.
-			pages.SwitchToPage(containersPage)
-			app.SetFocus(containersView)
+			pages.SwitchToPage(view.Container)
+			app.SetFocus(containerView)
 			return nil
 		}
 		return event
@@ -125,12 +103,12 @@ func update(ctx context.Context, app *tview.Application, pages *tview.Pages, con
 			app.QueueUpdateDraw(func() {
 				// Only refresh while shorts is the active page.
 				name, _ := pages.GetFrontPage()
-				if name == containersPage {
+				if name == view.Container {
 					if shorts, err := cli.Shorts(ctx); err != nil {
 						statusBar.SetText("[red]Error: " + err.Error() + "[-]")
 					} else {
 						statusBar.Clear()
-						PopulateContainersView(containersView, shorts)
+						view.PopulateContainer(containersView, shorts)
 					}
 				}
 			})

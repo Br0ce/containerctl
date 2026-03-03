@@ -1,4 +1,4 @@
-package console
+package view
 
 import (
 	"strings"
@@ -7,9 +7,9 @@ import (
 	"github.com/rivo/tview"
 )
 
-const logsPage = "logs"
+const Log = "logs"
 
-func CreateLogsView() *tview.TextView {
+func NewLog() *tview.TextView {
 	logsView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
@@ -17,7 +17,7 @@ func CreateLogsView() *tview.TextView {
 	return logsView
 }
 
-func PopulateLogsView(view *tview.TextView, logs client.LogSeq) {
+func PopulateLog(view *tview.TextView, logs client.LogSeq) {
 	var sb strings.Builder
 	for line, err := range logs {
 		if err != nil {

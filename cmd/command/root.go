@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Br0ce/containerctl/pkg/api/console"
+	"github.com/Br0ce/containerctl/pkg/ui"
 )
 
 var rootCmd = &cobra.Command{
@@ -14,7 +14,7 @@ var rootCmd = &cobra.Command{
 	Short: "A UI for monitoring and managing containers.",
 	Long:  "A UI for monitoring and managing local or remote containers.",
 	Run: func(cmd *cobra.Command, args []string) {
-		err := console.Run(cmd.Context())
+		err := ui.Run(cmd.Context())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err.Error())
 			os.Exit(1)
