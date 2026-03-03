@@ -24,6 +24,10 @@ type UI struct {
 	log       *view.Log
 }
 
+// New initializes the UI components and returns a UI instance.
+// It does not start the TUI application; the caller must call Run() to do so.
+// Note that the caller is responsible for calling Close() on the UI to clean up
+// resources after Run() returns.
 func New() (*UI, error) {
 	cli, err := client.New()
 	if err != nil {
@@ -56,8 +60,6 @@ func New() (*UI, error) {
 }
 
 // Run starts the TUI application and blocks until it exits.
-// The caller is responsible for calling Close() on the UI to clean up
-// resources after Run() returns.
 func (ui *UI) Run(ctx context.Context) error {
 	// Set up a cancellable context for input capture to cancel the update loop.
 	ctx, cancel := context.WithCancel(ctx)
