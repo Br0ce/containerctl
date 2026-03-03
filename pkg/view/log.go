@@ -3,21 +3,28 @@ package view
 import (
 	"strings"
 
-	"github.com/Br0ce/containerctl/pkg/client"
 	"github.com/rivo/tview"
+
+	"github.com/Br0ce/containerctl/pkg/client"
 )
 
-const Log = "logs"
+type Log struct {
+	name string
+	*tview.TextView
+}
 
-func NewLog() *tview.TextView {
+func NewLog() *Log {
 	logsView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
 	logsView.SetBorder(true).SetTitle(" Logs ")
-	return logsView
+	return &Log{
+		name:     "log",
+		TextView: logsView,
+	}
 }
 
-func PopulateLog(view *tview.TextView, logs client.LogSeq) {
+func (view *Log) Populate(logs client.LogSeq) {
 	var sb strings.Builder
 	for line, err := range logs {
 		if err != nil {
@@ -28,4 +35,8 @@ func PopulateLog(view *tview.TextView, logs client.LogSeq) {
 	}
 	view.SetText(sb.String())
 	view.ScrollToEnd()
+}
+
+func (view *Log) Name() string {
+	return view.name
 }

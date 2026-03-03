@@ -7,7 +7,12 @@ import (
 	"github.com/rivo/tview"
 )
 
-func NewHeader(dhost, dversion string) *tview.Flex {
+type Header struct {
+	name string
+	*tview.Flex
+}
+
+func NewHeader(dhost, dversion string) *Header {
 	contextView := tview.NewTextView().
 		SetText(fmt.Sprintf("Daemon Host: %s\nApi Version: %s", dhost, dversion)).
 		SetTextAlign(tview.AlignLeft).
@@ -23,8 +28,15 @@ func NewHeader(dhost, dversion string) *tview.Flex {
 		SetTextAlign(tview.AlignCenter).
 		SetTextColor(tcell.ColorYellow)
 
-	return tview.NewFlex().
-		AddItem(contextView, 0, 1, false).
-		AddItem(keyBindings, 0, 1, false).
-		AddItem(appTitle, 0, 1, false)
+	return &Header{
+		name: "header",
+		Flex: tview.NewFlex().
+			AddItem(contextView, 0, 1, false).
+			AddItem(keyBindings, 0, 1, false).
+			AddItem(appTitle, 0, 1, false),
+	}
+}
+
+func (view *Header) Name() string {
+	return view.name
 }
