@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"slices"
 
 	dcont "github.com/docker/docker/api/types/container"
 	dcli "github.com/docker/docker/client"
@@ -34,19 +35,29 @@ func (cli *Client) Close() error {
 }
 
 func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
-	containers, err := cli.client.ContainerList(ctx, dcont.ListOptions{All: false})
+	sums, err := cli.client.ContainerList(ctx, dcont.ListOptions{All: true, Latest: true})
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
 
+	slices.SortFunc(sums, func(a, b dcont.Summary) int {
+		if a.State == dcont.StateRunning && b.State != dcont.StateRunning {
+			return -1
+		}
+		if a.State == b.State {
+			return 0
+		}
+		return 1
+	})
+
 	var shorts []container.Short
-	for _, cont := range containers {
+	for _, sum := range sums {
 		shorts = append(shorts, container.Short{
-			ID:     cont.ID,
-			Name:   cont.Names[0],
-			Image:  cont.Image,
-			Status: cont.Status,
-			State:  container.StateFrom(cont.State),
+			ID:     sum.ID,
+			Name:   sum.Names[0],
+			Image:  sum.Image,
+			Status: sum.Status,
+			State:  container.StateFrom(sum.State),
 		})
 	}
 
