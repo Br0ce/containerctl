@@ -4,7 +4,7 @@ A terminal UI for managing containers.
 
 ## Overview
 
-`containerctl` provides a lightweigt, interactive terminal interface for working with containers.
+`containerctl` provides a lightweight, interactive terminal interface for working with containers.
 
 ---
 
@@ -18,14 +18,13 @@ A terminal UI for managing containers.
 
 ## Requirements
 
-- Go 1.25+
+- Go 1.26+
 
 ## Installation
 
 ```sh
 git clone https://github.com/Br0ce/containerctl.git
 cd containerctl
-make setup
 make build
 ```
 
