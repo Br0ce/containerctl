@@ -1,10 +1,15 @@
 # containerctl
 
-A terminal UI for managing containers.
+A terminal UI for Docker container management.
 
 ## Overview
 
-`containerctl` provides a lightweight, interactive terminal interface for working with containers.
+`containerctl` removes the friction from managing containers over SSH.
+It’s a lightweight CLI that lets you instantly inspect, control, and tail logs from containers — perfect for remote servers where you want speed, not tooling overhead.
+
+It sits as a thin layer between the [tview](https://github.com/rivo/tview) TUI framework and the [Moby](https://github.com/moby/moby) Docker client. It supports connecting to a remote Docker daemon directly over SSH, so you can manage containers on a remote host without SSHing in manually.
+
+Heavily inspired by [k9s](https://github.com/derailed/k9s)
 
 ---
 
@@ -60,6 +65,12 @@ Available make targets:
 | `tidy`         | Tidy and vendor dependencies         |
 | `clean`        | Remove build artifacts               |
 
+## Acknowledgements
+
+- Inspired by [k9s](https://github.com/derailed/k9s)
+- TUI built with [tview](https://github.com/rivo/tview) by [@rivo](https://github.com/rivo)
+- Docker integration via the [Moby](https://github.com/moby/moby) Go client
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).
