@@ -108,19 +108,19 @@ func getPrivateKeyConfig(identityFile string, curUser *user.User) (*ssh.ClientCo
 // or if filename is empty, the default ones in the ~/.ssh directory.
 // It returns an error if the file cannot be opened or if the filename is outside of the ~/.ssh directory.
 func openIdentityFile(filename, sshDir string) (*os.File, error) {
-	files := []string{"id_ed25519", "id_rsa", "id_ecdsa"}
-
 	if filename != "" {
-		files = append([]string{filename}, files...)
+		return os.OpenInRoot(sshDir, filepath.Base(filename))
 	}
 
-	for _, f := range files {
-		idFile, err := os.OpenInRoot(sshDir, filepath.Base(f))
+	// No filename provided, try the default ones.
+	for _, f := range []string{"id_ed25519", "id_rsa", "id_ecdsa"} {
+		idFile, err := os.OpenInRoot(sshDir, f)
 		if err == nil {
 			return idFile, nil
 		}
 	}
-	return nil, fmt.Errorf("open identity file")
+
+	return nil, fmt.Errorf("open default identity file")
 }
 
 // getUserConfig returns an ssh.ClientConfig for the given username, using a callback
