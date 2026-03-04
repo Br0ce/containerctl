@@ -68,6 +68,7 @@ or Apache 2.0). Full license texts are available in the vendor/ directory.
   go.opentelemetry.io/otel               Apache 2.0
   go.opentelemetry.io/otel/metric        Apache 2.0
   go.opentelemetry.io/otel/trace         Apache 2.0
+	golang.org/x/crypto                    BSD 3-Clause  Copyright 2009 The Go Authors
   golang.org/x/sys                       BSD 3-Clause  Copyright 2009 The Go Authors
   golang.org/x/term                      BSD 3-Clause  Copyright 2009 The Go Authors
   golang.org/x/text                      BSD 3-Clause  Copyright 2009 The Go Authors

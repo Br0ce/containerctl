@@ -20,45 +20,47 @@ import (
 type LogSeq = iter.Seq2[string, error]
 
 type Client struct {
-	client         dcli.APIClient
-	sshClient      io.Closer
-	daemonHostname string
+	client          dcli.APIClient
+	sshClientCloser io.Closer
+	daemonHost      string
 }
 
-func New(hostname string) (*Client, error) {
+func New(host, username, identityFile string) (*Client, error) {
 	opts := []dcli.Opt{dcli.FromEnv, dcli.WithAPIVersionNegotiation()}
 
 	client := &Client{}
-	client.daemonHostname = "localhost"
-	if hostname != "" {
-		dialOpt, closer, err := getSSHDialContext(hostname)
+	client.daemonHost = host
+	if host != "localhost" {
+		dialOpt, closer, err := getDialContext(host, username, identityFile)
 		if err != nil {
 			return nil, fmt.Errorf("get dial context: %w", err)
 		}
-		client.sshClient = closer
+		client.sshClientCloser = closer
 		opts = append(opts, dialOpt)
-		client.daemonHostname = hostname
 	}
 
 	cli, err := dcli.NewClientWithOpts(opts...)
 	if err != nil {
-		err = errors.Join(err, client.sshClient.Close())
+		if client.sshClientCloser != nil {
+			err = errors.Join(err, client.sshClientCloser.Close())
+		}
 		return nil, fmt.Errorf("create api client: %w", err)
 	}
 	client.client = cli
+
 	return client, nil
 }
 
 func (cli *Client) Close() error {
 	err := cli.client.Close()
-	if cli.sshClient != nil {
-		err = errors.Join(err, cli.sshClient.Close())
+	if cli.sshClientCloser != nil {
+		err = errors.Join(err, cli.sshClientCloser.Close())
 	}
 	return err
 }
 
-func getSSHDialContext(host string) (dcli.Opt, io.Closer, error) {
-	sshCli, err := NewSSHClient(host)
+func getDialContext(host, username, identityFile string) (dcli.Opt, io.Closer, error) {
+	sshCli, err := NewSSHClient(host, username, identityFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial host %s: %w", host, err)
 	}
@@ -132,8 +134,8 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 	}
 }
 
-func (cli *Client) DaemonHostname() string {
-	return cli.daemonHostname
+func (cli *Client) DaemonHost() string {
+	return cli.daemonHost
 }
 
 func (cli *Client) DaemonVersion() string {
