@@ -7,6 +7,7 @@ require (
 	github.com/gdamore/tcell/v2 v2.13.8
 	github.com/rivo/tview v0.42.0
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/crypto v0.48.0
 )
 
 require (

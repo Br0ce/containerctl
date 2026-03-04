@@ -3,9 +3,11 @@ package client
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
+	"net"
 	"slices"
 
 	dcont "github.com/docker/docker/api/types/container"
@@ -18,20 +20,54 @@ import (
 type LogSeq = iter.Seq2[string, error]
 
 type Client struct {
-	client dcli.APIClient
+	client         dcli.APIClient
+	sshClient      io.Closer
+	daemonHostname string
 }
 
-func New() (*Client, error) {
+func New(hostname string) (*Client, error) {
 	opts := []dcli.Opt{dcli.FromEnv, dcli.WithAPIVersionNegotiation()}
+
+	client := &Client{}
+	client.daemonHostname = "localhost"
+	if hostname != "" {
+		dialOpt, closer, err := getSSHDialContext(hostname)
+		if err != nil {
+			return nil, fmt.Errorf("get dial context: %w", err)
+		}
+		client.sshClient = closer
+		opts = append(opts, dialOpt)
+		client.daemonHostname = hostname
+	}
+
 	cli, err := dcli.NewClientWithOpts(opts...)
 	if err != nil {
-		return nil, err
+		err = errors.Join(err, client.sshClient.Close())
+		return nil, fmt.Errorf("create api client: %w", err)
 	}
-	return &Client{client: cli}, nil
+	client.client = cli
+	return client, nil
 }
 
 func (cli *Client) Close() error {
-	return cli.client.Close()
+	err := cli.client.Close()
+	if cli.sshClient != nil {
+		err = errors.Join(err, cli.sshClient.Close())
+	}
+	return err
+}
+
+func getSSHDialContext(host string) (dcli.Opt, io.Closer, error) {
+	sshCli, err := NewSSHClient(host)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial host %s: %w", host, err)
+	}
+
+	dialer := func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return sshCli.DialContext(ctx, "unix", "/var/run/docker.sock")
+	}
+
+	return dcli.WithDialContext(dialer), sshCli, nil
 }
 
 func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
@@ -96,12 +132,8 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 	}
 }
 
-func (cli *Client) DaemonHostname() (string, error) {
-	url, err := dcli.ParseHostURL(cli.client.DaemonHost())
-	if err != nil {
-		return "", fmt.Errorf("parse host URL: %w", err)
-	}
-	return url.Hostname(), nil
+func (cli *Client) DaemonHostname() string {
+	return cli.daemonHostname
 }
 
 func (cli *Client) DaemonVersion() string {

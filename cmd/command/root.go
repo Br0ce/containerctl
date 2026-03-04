@@ -9,12 +9,14 @@ import (
 	"github.com/Br0ce/containerctl/pkg/ui"
 )
 
+var host string
+
 var rootCmd = &cobra.Command{
 	Use:   "containerctl",
 	Short: "A TUI for monitoring and managing containers.",
 	Long:  "A TUI for monitoring and managing local or remote containers.",
 	Run: func(cmd *cobra.Command, args []string) {
-		ui, err := ui.New()
+		ui, err := ui.New(host)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: create ui %s\n", err.Error())
 			os.Exit(1)
@@ -32,6 +34,10 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 	},
+}
+
+func init() {
+	rootCmd.Flags().StringVar(&host, "host", "", "Docker host to connect to")
 }
 
 func Execute() {

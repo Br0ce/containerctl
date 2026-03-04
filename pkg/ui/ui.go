@@ -28,18 +28,13 @@ type UI struct {
 // It does not start the TUI application; the caller must call Run() to do so.
 // Note that the caller is responsible for calling Close() on the UI to clean up
 // resources after Run() returns.
-func New() (*UI, error) {
-	cli, err := client.New()
+func New(host string) (*UI, error) {
+	cli, err := client.New(host)
 	if err != nil {
 		return nil, fmt.Errorf("create client: %w", err)
 	}
 
-	dhost, err := cli.DaemonHostname()
-	if err != nil {
-		return nil, fmt.Errorf("get daemon hostname: %w", err)
-	}
-
-	header := view.NewHeader(dhost, cli.DaemonVersion())
+	header := view.NewHeader(cli.DaemonHostname(), cli.DaemonVersion())
 	container := view.NewContainer()
 	log := view.NewLog()
 	errBar := view.NewErrorBar()
