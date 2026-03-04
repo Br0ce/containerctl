@@ -1,0 +1,52 @@
+on:
+  push:
+    tags:
+      - "v*"
+
+name: release
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    env:
+      GOPATH: ${{ github.workspace }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+
+    runs-on: macos-latest
+
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          check-latest: true
+          cache: false
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+
+      - name: Build amd64
+        env:
+          GOOS: darwin
+          GOARCH: amd64
+        run: go build -o bin/containerctl-${{ github.ref_name }}-amd64 ./cmd
+
+      - name: Build arm64
+        env:
+          GOOS: darwin
+          GOARCH: arm64
+        run: go build -o bin/containerctl-${{ github.ref_name }}-arm64 ./cmd
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-amd64
+            ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-arm64
