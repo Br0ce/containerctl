@@ -17,7 +17,7 @@ jobs:
       run:
         working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
 
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Install Go
@@ -32,21 +32,21 @@ jobs:
         with:
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
 
-      - name: Build amd64
-        env:
-          GOOS: darwin
-          GOARCH: amd64
-        run: go build -o bin/containerctl-${{ github.ref_name }}-amd64 ./cmd
-
-      - name: Build arm64
+      - name: Build macOS arm64
         env:
           GOOS: darwin
           GOARCH: arm64
-        run: go build -o bin/containerctl-${{ github.ref_name }}-arm64 ./cmd
+        run: go build -o bin/containerctl-${{ github.ref_name }}-darwin-arm64 ./cmd
+
+      - name: Build Linux amd64
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -o bin/containerctl-${{ github.ref_name }}-linux-amd64 ./cmd
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-amd64
-            ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-arm64
+            ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-darwin-arm64
+            ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-linux-amd64
