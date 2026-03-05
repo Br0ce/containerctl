@@ -1,6 +1,6 @@
 # containerctl
 
-A terminal UI for Docker container management.
+A lightweight terminal UI for Docker container management, built for speed over remote SSH connections
 
 ## Overview
 
@@ -9,15 +9,12 @@ It’s a lightweight CLI that lets you instantly inspect, control, and tail logs
 
 It sits as a thin layer between the [tview](https://github.com/rivo/tview) TUI framework and the [Moby](https://github.com/moby/moby) Docker client. It supports connecting to a remote Docker daemon directly over SSH, so you can manage containers on a remote host without SSHing in manually.
 
-Heavily inspired by [k9s](https://github.com/derailed/k9s)
-
 ---
 
 ![Build Status](https://github.com/Br0ce/containerctl/actions/workflows/ci.yml/badge.svg)
 [![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/containerctl)](https://github.com/Br0ce/containerctl)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/containerctl.svg)](https://pkg.go.dev/github.com/Br0ce/containerctl)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/containerctl)](https://goreportcard.com/report/github.com/Br0ce/containerctl)
-![GitHub License](https://img.shields.io/github/license/Br0ce/containerctl)
 
 ---
 
