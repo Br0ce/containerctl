@@ -16,7 +16,7 @@ func NewContainer() *Container {
 	shortsView := tview.NewTable().
 		SetBorders(false).
 		SetSelectable(true, false)
-	shortsView.SetBorder(true).SetTitle(" Containers ")
+	shortsView.SetBorder(true).SetTitle(" Containers ").SetTitleColor(tcell.ColorAqua)
 	return &Container{
 		name:  "container",
 		Table: shortsView,

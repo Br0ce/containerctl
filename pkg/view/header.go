@@ -14,9 +14,10 @@ type Header struct {
 
 func NewHeader(dhost, dversion string) *Header {
 	contextView := tview.NewTextView().
-		SetText(fmt.Sprintf("Docker Engine API: %s\nApi Version: %s", dhost, dversion)).
+		SetText(fmt.Sprintf("Docker Engine API Host:    [white]%s[aqua]\nDocker Engine API Version: [white]%s", dhost, dversion)).
 		SetTextAlign(tview.AlignLeft).
-		SetTextColor(tcell.ColorAqua)
+		SetTextColor(tcell.ColorAqua).
+		SetDynamicColors(true)
 
 	appTitle := tview.NewTextView().
 		SetText(`                 _        _                     _   _ 
@@ -28,9 +29,9 @@ func NewHeader(dhost, dversion string) *Header {
 		SetTextColor(tcell.ColorMidnightBlue)
 
 	keyBindings := tview.NewTextView().
-		SetText("<q>   Quit\n<l>   Logs\n<Esc> Back").
+		SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<l>[gray]   Logs\n[dodgerblue]<Esc>[gray] Back").
 		SetTextAlign(tview.AlignCenter).
-		SetTextColor(tcell.ColorYellow)
+		SetDynamicColors(true)
 
 	return &Header{
 		name: "header",
