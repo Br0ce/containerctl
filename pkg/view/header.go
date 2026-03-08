@@ -8,7 +8,8 @@ import (
 )
 
 type Header struct {
-	name string
+	name        string
+	keyBindings *tview.TextView
 	*tview.Flex
 }
 
@@ -29,16 +30,27 @@ func NewHeader(dhost, dversion string) *Header {
 		SetTextColor(tcell.ColorMidnightBlue)
 
 	keyBindings := tview.NewTextView().
-		SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<l>[gray]   Logs\n[dodgerblue]<Esc>[gray] Back").
+		SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<l>[gray]   Logs").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true)
 
 	return &Header{
-		name: "header",
+		name:        "header",
+		keyBindings: keyBindings,
 		Flex: tview.NewFlex().
 			AddItem(contextView, 0, 1, false).
 			AddItem(keyBindings, 0, 1, false).
 			AddItem(appTitle, 0, 1, false),
+	}
+}
+
+// SetKeyBindings updates the key bindings display for the given page name.
+func (h *Header) SetKeyBindings(name string) {
+	switch name {
+	case "log":
+		h.keyBindings.SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<Esc>[gray] Back")
+	default:
+		h.keyBindings.SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<l>[gray]   Logs")
 	}
 }
 

@@ -160,6 +160,7 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 				id := ui.container.GetCell(row, 0).GetReference().(string)
 				ui.log.Populate(ui.cli.Logs(ctx, id))
 				ui.body.SwitchToPage(ui.log.Name())
+				ui.header.SetKeyBindings(ui.log.Name())
 				ui.app.SetFocus(ui.log)
 				return nil
 			}
@@ -167,6 +168,7 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 		case tcell.KeyEscape:
 			// Return to the default page from any page.
 			ui.body.SwitchToPage(ui.container.Name())
+			ui.header.SetKeyBindings(ui.container.Name())
 			ui.app.SetFocus(ui.container)
 			return nil
 		}
