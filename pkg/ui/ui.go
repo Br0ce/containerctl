@@ -99,7 +99,7 @@ func (ui *UI) Run(ctx context.Context) error {
 
 	root := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(ui.header, 3, 0, false).
+		AddItem(ui.header, 5, 0, false).
 		AddItem(ui.errBar, 1, 0, false).
 		AddItem(ui.body, 0, 1, true)
 

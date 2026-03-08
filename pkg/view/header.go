@@ -19,9 +19,13 @@ func NewHeader(dhost, dversion string) *Header {
 		SetTextColor(tcell.ColorAqua)
 
 	appTitle := tview.NewTextView().
-		SetText("cctl").
+		SetText(`                 _        _                     _   _ 
+  ___ ___  _ __ | |_ __ _(_)_ __   ___ _ __ ___| |_| |
+ / __/ _ \| '_ \| __/ _` + "`" + ` | | '_ \ / _ \ '__/ __| __| |
+| (_| (_) | | | | || (_| | | | | |  __/ | | (__| |_| |
+ \___\___/|_| |_|\__\__,_|_|_| |_|\___|_|  \___|\__|_|`).
 		SetTextAlign(tview.AlignRight).
-		SetTextColor(tcell.ColorWhite)
+		SetTextColor(tcell.ColorMidnightBlue)
 
 	keyBindings := tview.NewTextView().
 		SetText("<q>   Quit\n<l>   Logs\n<Esc> Back").
