@@ -14,6 +14,14 @@ import (
 
 const updateRate = 3 * time.Second
 
+type Config struct {
+	Host         string
+	DockerHost   string
+	Username     string
+	IdentityFile string
+	AskPassword  bool
+}
+
 type UI struct {
 	app       *tview.Application
 	cli       *client.Client
@@ -28,8 +36,27 @@ type UI struct {
 // It does not start the TUI application; the caller must call Run() to do so.
 // Note that the caller is responsible for calling Close() on the UI to clean up
 // resources after Run() returns.
-func New(host, user, identiyFile string) (*UI, error) {
-	cli, err := client.New(host, user, identiyFile)
+func New(cfg Config) (*UI, error) {
+	var opts []client.ClientOptions
+	if cfg.Host == "" {
+		return nil, fmt.Errorf("host is required")
+	}
+	if cfg.DockerHost == "" {
+		return nil, fmt.Errorf("docker host is required")
+	}
+	opts = append(opts, client.WithHost(cfg.Host), client.WithDockerHost(cfg.DockerHost))
+
+	if cfg.Username != "" {
+		opts = append(opts, client.WithUsername(cfg.Username))
+	}
+	if cfg.IdentityFile != "" {
+		opts = append(opts, client.WithIdentityFile(cfg.IdentityFile))
+	}
+	if cfg.AskPassword {
+		opts = append(opts, client.WithAskPassword(true))
+	}
+
+	cli, err := client.New(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create client: %w", err)
 	}
@@ -72,7 +99,7 @@ func (ui *UI) Run(ctx context.Context) error {
 
 	root := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(ui.header, 3, 0, false).
+		AddItem(ui.header, 5, 0, false).
 		AddItem(ui.errBar, 1, 0, false).
 		AddItem(ui.body, 0, 1, true)
 
@@ -133,6 +160,7 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 				id := ui.container.GetCell(row, 0).GetReference().(string)
 				ui.log.Populate(ui.cli.Logs(ctx, id))
 				ui.body.SwitchToPage(ui.log.Name())
+				ui.header.SetKeyBindings(ui.log.Name())
 				ui.app.SetFocus(ui.log)
 				return nil
 			}
@@ -140,6 +168,7 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 		case tcell.KeyEscape:
 			// Return to the default page from any page.
 			ui.body.SwitchToPage(ui.container.Name())
+			ui.header.SetKeyBindings(ui.container.Name())
 			ui.app.SetFocus(ui.container)
 			return nil
 		}

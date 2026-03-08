@@ -1,5 +1,4 @@
-.PHONY: build format test clean test-e2e test-e2e-verbose test-e2e-parallel test-e2e-html
-
+.PHONY: build format lint clean-test test test-v test-race clean run build tidy setup
 format:
 	go fmt ./...
 
@@ -22,7 +21,7 @@ clean:
 	rm -f ./bin/
 
 run:
-	go run ./cmd
+	go run ./cmd $(ARGS)
 
 build:
 	go build -o bin/containerctl ./cmd

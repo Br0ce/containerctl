@@ -3,6 +3,7 @@ package view
 import (
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
 	"github.com/Br0ce/containerctl/pkg/client"
@@ -17,7 +18,7 @@ func NewLog() *Log {
 	logsView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	logsView.SetBorder(true).SetTitle(" Logs ")
+	logsView.SetBorder(true).SetTitle(" Logs ").SetTitleColor(tcell.ColorAqua)
 	return &Log{
 		name:     "log",
 		TextView: logsView,
