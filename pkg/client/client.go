@@ -26,7 +26,7 @@ type Client struct {
 }
 
 func New(cOpts ...ClientOptions) (*Client, error) {
-	cfg, err := MakeConfig(cOpts...)
+	cfg, err := NewConfig(cOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("make client config: %w", err)
 	}

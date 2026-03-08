@@ -16,6 +16,9 @@ import (
 // The host can be in the format of "example.com", "user@example.com:22", or any valid
 // combination of username, hostname, and port. If the port is not specified, it defaults to 22.
 //
+// If a ~/.ssh/config file is present and contains an entry matching host, username, port or identity file,
+// the values from the config will override the corresponding values provided by the command line arguments.
+//
 // If a username is provided, the client will use password authentication. If the username is
 // provided in both the host string and the argument, it will return an error.
 //
@@ -27,7 +30,7 @@ import (
 // e.g., id_ed25519, id_rsa, and id_ecdsa.
 //
 // In either case, the client will check the host key against the known_hosts file in the ~/.ssh directory.
-func NewSSHClient(cfg Config) (*ssh.Client, error) {
+func NewSSHClient(cfg *Config) (*ssh.Client, error) {
 	callback, err := knownhosts.New(filepath.Join(cfg.SSHDir(), "known_hosts"))
 	if err != nil {
 		return nil, fmt.Errorf("get host key callback: %w", err)
@@ -44,10 +47,10 @@ func NewSSHClient(cfg Config) (*ssh.Client, error) {
 		Auth:            authMethod,
 	}
 
-	return ssh.Dial("tcp", cfg.host, sshCfg)
+	return ssh.Dial("tcp", cfg.Addr(), sshCfg)
 }
 
-func getAuthMethod(cfg Config) ([]ssh.AuthMethod, error) {
+func getAuthMethod(cfg *Config) ([]ssh.AuthMethod, error) {
 	if cfg.AskPassword() {
 		callback := func() (secret string, err error) {
 			fmt.Print("Enter password: ")

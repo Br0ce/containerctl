@@ -19,18 +19,19 @@ var (
 	rootCmd = &cobra.Command{
 		Use:   "containerctl",
 		Short: "A TUI for monitoring and managing local or remote containers.",
-		Long: `A TUI for monitoring and managing containers. containerctl connects to the Docker engine API
+		Long: `A TUI for monitoring and managing containers. containerctl connects to the Docker Engine API
 either locally or remotely via SSH.
 
 Behavior:
 
-  - If --host is not provided, containerctl connects to the local Docker API socket in the following order of precedence:
+  - If --host is not provided, containerctl connects to the local Docker API-compatible socket in the following order of precedence:
 	1. If DOCKER_HOST environment variable is set, it is used as the host.
 	2. If --docker-socket is provided, it is used as the host.
 	3. Otherwise, the default unix socket (unix:///var/run/docker.sock) is used.
-  - To determine the Docker API-compatible host
   - If --host is provided, the connection is done securely over SSH.
 	- Host key verification is enforced using your known_hosts file.
+	  If a ~/.ssh/config entry for host, username, port or identity file is found, it is used and overrides the corresponding
+	  values provided by the command line arguments.
 	- The username for SSH authentication is determined in the following order of precedence:
 		1. --username argument
 		2. username embedded in host as user@hostname
