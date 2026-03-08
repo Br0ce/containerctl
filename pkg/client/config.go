@@ -14,8 +14,8 @@ import (
 
 type Config struct {
 	host         string
+	dockerHost   string
 	port         string
-	dockerSocket string
 	username     string
 	identityFile string
 	askPwd       bool
@@ -30,9 +30,9 @@ func WithHost(host string) ClientOptions {
 	}
 }
 
-func WithDockerSocket(sock string) ClientOptions {
+func WithDockerHost(host string) ClientOptions {
 	return func(cfg *Config) {
-		cfg.dockerSocket = sock
+		cfg.dockerHost = host
 	}
 }
 
@@ -127,8 +127,8 @@ func (cfg *Config) SSHDir() string {
 	return cfg.sshDir
 }
 
-func (cfg *Config) DockerSocket() string {
-	return cfg.dockerSocket
+func (cfg *Config) DockerHost() string {
+	return cfg.dockerHost
 }
 
 // openIdentityFile tries to open the identity file from the given filename

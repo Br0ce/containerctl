@@ -42,7 +42,7 @@ func New(cOpts ...ClientOptions) (*Client, error) {
 		}
 
 		dialer := func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return sshCli.DialContext(ctx, "unix", cfg.DockerSocket())
+			return sshCli.DialContext(ctx, "unix", cfg.DockerHost())
 		}
 
 		client.sshClientCloser = sshCli

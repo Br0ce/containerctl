@@ -16,9 +16,9 @@ const updateRate = 3 * time.Second
 
 type Config struct {
 	Host         string
+	DockerHost   string
 	Username     string
 	IdentityFile string
-	DockerSocket string
 	AskPassword  bool
 }
 
@@ -41,10 +41,10 @@ func New(cfg Config) (*UI, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("host is required")
 	}
-	if cfg.DockerSocket == "" {
-		return nil, fmt.Errorf("docker socket is required")
+	if cfg.DockerHost == "" {
+		return nil, fmt.Errorf("docker host is required")
 	}
-	opts = append(opts, client.WithHost(cfg.Host), client.WithDockerSocket(cfg.DockerSocket))
+	opts = append(opts, client.WithHost(cfg.Host), client.WithDockerHost(cfg.DockerHost))
 
 	if cfg.Username != "" {
 		opts = append(opts, client.WithUsername(cfg.Username))

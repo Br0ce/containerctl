@@ -15,16 +15,15 @@ It sits as a thin layer between the [tview](https://github.com/rivo/tview) TUI f
 
 Connects to a local Docker API-compatible socket using the first available option:
 
-1. `DOCKER_HOST` environment variable
-2. `--docker-socket` flag
+1. `DOCKER_HOST`, `DOCKER_API_VERSION`, `DOCKER_CERT_PATH` or `DOCKER_TLS_VERIFY` environment variable
+2. `--docker-host` flag
 3. Default: `unix:///var/run/docker.sock`
 
 #### Remote mode (`--host`)
 
 Connects securely over SSH. Host key verification is enforced via `~/.ssh/known_hosts`.
 
-If a `~/.ssh/config` entry matches the given host, values for `HostName`, `Port`, `User`,
-and `IdentityFile` are read from it and take precedence over command-line arguments.
+If a `~/.ssh/config` entry matches the given host, values for `HostName`, `Port`, `User`, or `IdentityFile` are read from it and take precedence over command-line arguments to replicate OpenSSH behavior.
 
 **Username** is resolved in this order:
 1. `--username` flag
@@ -36,8 +35,8 @@ and `IdentityFile` are read from it and take precedence over command-line argume
 2. `~/.ssh/config` `IdentityFile` entry for the host
 3. Default keys: `~/.ssh/id_ed25519`, `id_rsa`, `id_ecdsa`
 
-**Docker socket** on the remote host (note: `DOCKER_HOST` is ignored in remote mode):
-1. `--docker-socket` flag
+**Docker Host** on the remote host (note: `DOCKER_HOST`, `DOCKER_API_VERSION`, `DOCKER_CERT_PATH` and `DOCKER_TLS_VERIFY` are ignored in remote mode):
+1. `--docker-host` flag
 2. Default: `unix:///var/run/docker.sock`
 
 ## Examples
@@ -46,7 +45,7 @@ and `IdentityFile` are read from it and take precedence over command-line argume
   # Connect to local Docker
   containerctl
 
-  # Connect to remote host using default SSH key from config
+  # Connect to remote host using default SSH key from ~/.ssh/config
   containerctl --host my-host
 
   # Connect to remote host using with SSH key

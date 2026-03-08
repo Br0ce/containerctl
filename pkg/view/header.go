@@ -14,7 +14,7 @@ type Header struct {
 
 func NewHeader(dhost, dversion string) *Header {
 	contextView := tview.NewTextView().
-		SetText(fmt.Sprintf("Daemon Host: %s\nApi Version: %s", dhost, dversion)).
+		SetText(fmt.Sprintf("Docker Engine API: %s\nApi Version: %s", dhost, dversion)).
 		SetTextAlign(tview.AlignLeft).
 		SetTextColor(tcell.ColorAqua)
 
