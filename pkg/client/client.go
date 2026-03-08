@@ -25,18 +25,28 @@ type Client struct {
 	daemonHost      string
 }
 
-func New(host, username, identityFile string) (*Client, error) {
-	opts := []dcli.Opt{dcli.FromEnv, dcli.WithAPIVersionNegotiation()}
+func New(cOpts ...ClientOptions) (*Client, error) {
+	cfg, err := MakeConfig(cOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("make client config: %w", err)
+	}
 
 	client := &Client{}
-	client.daemonHost = host
-	if host != "localhost" {
-		dialOpt, closer, err := getDialContext(host, username, identityFile)
+	client.daemonHost = cfg.host
+
+	opts := []dcli.Opt{dcli.FromEnv, dcli.WithAPIVersionNegotiation()}
+	if client.daemonHost != "localhost" {
+		sshCli, err := NewSSHClient(cfg)
 		if err != nil {
-			return nil, fmt.Errorf("get dial context: %w", err)
+			return nil, fmt.Errorf("dial host %s: %w", cfg.host, err)
 		}
-		client.sshClientCloser = closer
-		opts = append(opts, dialOpt)
+
+		dialer := func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return sshCli.DialContext(ctx, "unix", cfg.DockerSocket())
+		}
+
+		client.sshClientCloser = sshCli
+		opts = append(opts, dcli.WithDialContext(dialer))
 	}
 
 	cli, err := dcli.NewClientWithOpts(opts...)
@@ -57,19 +67,6 @@ func (cli *Client) Close() error {
 		err = errors.Join(err, cli.sshClientCloser.Close())
 	}
 	return err
-}
-
-func getDialContext(host, username, identityFile string) (dcli.Opt, io.Closer, error) {
-	sshCli, err := NewSSHClient(host, username, identityFile)
-	if err != nil {
-		return nil, nil, fmt.Errorf("dial host %s: %w", host, err)
-	}
-
-	dialer := func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return sshCli.DialContext(ctx, "unix", "/var/run/docker.sock")
-	}
-
-	return dcli.WithDialContext(dialer), sshCli, nil
 }
 
 func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
