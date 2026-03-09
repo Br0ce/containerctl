@@ -20,7 +20,7 @@ var (
 	rootCmd = &cobra.Command{
 		Use:     "containerctl",
 		Version: version.Version,
-		Short: "A TUI for monitoring and managing local or remote containers.",
+		Short:   "A TUI for monitoring and managing local or remote containers.",
 		Long: `A TUI for monitoring and managing containers. containerctl connects to the Docker Engine API
 either locally or remotely via SSH.
 
