@@ -92,7 +92,7 @@ func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
 			Name:   sum.Names[0],
 			Image:  sum.Image,
 			Status: sum.Status,
-			State:  container.StateFrom(sum.State),
+			State:  sum.State,
 		})
 	}
 
