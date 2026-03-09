@@ -36,13 +36,13 @@ jobs:
         env:
           GOOS: darwin
           GOARCH: arm64
-        run: go build -o bin/containerctl-${{ github.ref_name }}-darwin-arm64 ./cmd
+        run: go build -ldflags "-X github.com/Br0ce/containerctl/pkg/version.Version=${{ github.ref_name }}" -o bin/containerctl-${{ github.ref_name }}-darwin-arm64 ./cmd
 
       - name: Build Linux amd64
         env:
           GOOS: linux
           GOARCH: amd64
-        run: go build -o bin/containerctl-${{ github.ref_name }}-linux-amd64 ./cmd
+        run: go build -ldflags "-X github.com/Br0ce/containerctl/pkg/version.Version=${{ github.ref_name }}" -o bin/containerctl-${{ github.ref_name }}-linux-amd64 ./cmd
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
