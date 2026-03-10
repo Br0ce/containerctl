@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Br0ce/containerctl/pkg/ui"
+	"github.com/Br0ce/containerctl/pkg/version"
 )
 
 var (
@@ -17,8 +18,9 @@ var (
 	askPassword  bool
 
 	rootCmd = &cobra.Command{
-		Use:   "containerctl",
-		Short: "A TUI for monitoring and managing local or remote containers.",
+		Use:     "containerctl",
+		Version: version.Version,
+		Short:   "A TUI for monitoring and managing local or remote containers.",
 		Long: `A TUI for monitoring and managing containers. containerctl connects to the Docker Engine API
 either locally or remotely via SSH.
 

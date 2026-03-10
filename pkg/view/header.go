@@ -27,7 +27,7 @@ func NewHeader(dhost, dversion string) *Header {
 | (_| (_) | | | | || (_| | | | | |  __/ | | (__| |_| |
  \___\___/|_| |_|\__\__,_|_|_| |_|\___|_|  \___|\__|_|`).
 		SetTextAlign(tview.AlignRight).
-		SetTextColor(tcell.ColorMidnightBlue)
+		SetTextColor(tcell.ColorMediumBlue)
 
 	keyBindings := tview.NewTextView().
 		SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<l>[gray]   Logs").
