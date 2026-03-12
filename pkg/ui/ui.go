@@ -26,9 +26,11 @@ type UI struct {
 	app       *tview.Application
 	cli       *client.Client
 	container *view.Container
-	errBar    *view.ErrorBar
+	errModal  *view.ErrorModal
 	header    *view.Header
 	body      *tview.Pages
+	rootPages *tview.Pages
+	errCh     chan error
 	log       *view.Log
 }
 
@@ -64,7 +66,7 @@ func New(cfg Config) (*UI, error) {
 	header := view.NewHeader(cli.DaemonHost(), cli.DaemonVersion())
 	container := view.NewContainer()
 	log := view.NewLog()
-	errBar := view.NewErrorBar()
+	errModal := view.NewErrorModal()
 
 	body := tview.NewPages().
 		AddPage(container.Name(), container, true, true).
@@ -76,8 +78,10 @@ func New(cfg Config) (*UI, error) {
 		header:    header,
 		container: container,
 		log:       log,
-		errBar:    errBar,
-		body:      body,
+		errModal:  errModal,
+		// Buffered channel to avoid blocking when publishing errors. Needs rework.
+		errCh: make(chan error, 1),
+		body:  body,
 	}, nil
 }
 
@@ -87,23 +91,36 @@ func (ui *UI) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	go ui.updateLoop(ctx, updateRate)
-	ui.inputCapture(ctx, cancel)
-
-	// Initial synchronous load before the app starts.
-	if shorts, err := ui.cli.Shorts(ctx); err != nil {
-		ui.errBar.Populate(err)
-	} else {
-		ui.container.Populate(shorts)
-	}
-
-	root := tview.NewFlex().
+	mainLayout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(ui.header, 5, 0, false).
-		AddItem(ui.errBar, 1, 0, false).
 		AddItem(ui.body, 0, 1, true)
 
-	return ui.app.SetRoot(root, true).Run()
+	ui.rootPages = tview.NewPages().
+		AddPage("main", mainLayout, true, true).
+		AddPage(ui.errModal.Name(), ui.errModal, true, false)
+
+	ui.errModal.SetDoneFunc(func(_ int, _ string) {
+		ui.rootPages.HidePage(ui.errModal.Name())
+		ui.app.SetFocus(ui.body)
+	})
+
+	go ui.updateLoop(ctx, updateRate)
+	go ui.listenErrors(ctx)
+	ui.inputCapture(ctx, cancel)
+
+	// Initial load: run async so the modal can be shown if an error occurs.
+	go func() {
+		shorts, err := ui.cli.AllShorts(ctx)
+		if err != nil {
+			ui.publishError(err)
+			return
+		}
+
+		ui.app.QueueUpdateDraw(func() { ui.container.Populate(shorts) })
+	}()
+
+	return ui.app.SetRoot(ui.rootPages, true).Run()
 }
 
 func (ui *UI) Close() error {
@@ -121,18 +138,22 @@ func (ui *UI) updateLoop(ctx context.Context, rate time.Duration) {
 				// Only refresh while containers is the active page.
 				name, _ := ui.body.GetFrontPage()
 				if name == ui.container.Name() {
-					if shorts, err := ui.cli.Shorts(ctx); err != nil {
-						ui.errBar.Populate(err)
-					} else {
-						ui.errBar.Clear()
-						ui.container.Populate(shorts)
-					}
+					ui.populateContainers(ctx)
 				}
 			})
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+func (ui *UI) populateContainers(ctx context.Context) {
+	shorts, err := ui.cli.AllShorts(ctx)
+	if err != nil {
+		ui.publishError(err)
+		return
+	}
+	ui.container.Populate(shorts)
 }
 
 // inputCapture sets up global keybindings for the app.
@@ -145,27 +166,29 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 				cancel()
 				ui.app.Stop()
 				return nil
-
 			case 'l':
-				// Only act when the table is the containers page.
-				name, _ := ui.body.GetFrontPage()
-				if name != ui.container.Name() {
-					return nil
-				}
-				row, _ := ui.container.GetSelection()
-				if row < 1 {
-					// row 0 is the header — nothing to inspect.
-					return nil
-				}
-				id := ui.container.GetCell(row, 0).GetReference().(string)
-				ui.log.Populate(ui.cli.Logs(ctx, id))
-				ui.body.SwitchToPage(ui.log.Name())
-				ui.header.SetKeyBindings(ui.log.Name())
-				ui.app.SetFocus(ui.log)
+				ui.handleLogs(ctx)
+				return nil
+			case 's':
+				ui.handleStart(ctx)
+				return nil
+			case 'x':
+				ui.handleStop(ctx)
+				return nil
+			case 'p':
+				ui.handlePause(ctx)
+				return nil
+			case 'u':
+				ui.handleUnpause(ctx)
 				return nil
 			}
 
 		case tcell.KeyEscape:
+			// If the error modal is front, let it handle Esc via its done func.
+			name, _ := ui.rootPages.GetFrontPage()
+			if name == ui.errModal.Name() {
+				return event
+			}
 			// Return to the default page from any page.
 			ui.body.SwitchToPage(ui.container.Name())
 			ui.header.SetKeyBindings(ui.container.Name())
@@ -174,4 +197,134 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 		}
 		return event
 	})
+}
+
+func (ui *UI) handleLogs(ctx context.Context) {
+	// Only act when the table is the containers page.
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		// row 0 is the header — nothing to inspect.
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+	ui.log.Populate(ui.cli.Logs(ctx, id))
+	ui.body.SwitchToPage(ui.log.Name())
+	ui.header.SetKeyBindings(ui.log.Name())
+	ui.app.SetFocus(ui.log)
+}
+
+func (ui *UI) handleStart(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+
+	// Start the container in the background.
+	go func() {
+		err := ui.cli.StartContainer(ctx, id)
+		if err != nil {
+			ui.publishError(err)
+		}
+	}()
+	ui.populateContainers(ctx)
+}
+
+func (ui *UI) handleStop(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+
+	// Stop the container in the background.
+	go func() {
+		err := ui.cli.StopContainer(ctx, id)
+		if err != nil {
+			ui.publishError(err)
+		}
+	}()
+	ui.populateContainers(ctx)
+}
+
+func (ui *UI) handlePause(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+
+	// Pause the container in the background.
+	go func() {
+		err := ui.cli.PauseContainer(ctx, id)
+		if err != nil {
+			ui.publishError(err)
+		}
+	}()
+	ui.populateContainers(ctx)
+}
+
+func (ui *UI) handleUnpause(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+
+	// Unpause the container in the background.
+	go func() {
+		err := ui.cli.UnpauseContainer(ctx, id)
+		if err != nil {
+			ui.publishError(err)
+		}
+	}()
+	ui.populateContainers(ctx)
+}
+
+// publishError sends err to errCh. If the channel is full, the error is dropped.
+func (ui *UI) publishError(err error) {
+	select {
+	case ui.errCh <- err:
+	default:
+	}
+}
+
+// listenErrors reads from errCh and displays the error modal.
+func (ui *UI) listenErrors(ctx context.Context) {
+	for {
+		select {
+		case err := <-ui.errCh:
+			ui.app.QueueUpdateDraw(func() {
+				name, _ := ui.rootPages.GetFrontPage()
+				if name == ui.errModal.Name() {
+					return
+				}
+				ui.errModal.Populate(err)
+				ui.rootPages.ShowPage(ui.errModal.Name())
+				ui.app.SetFocus(ui.errModal)
+			})
+		case <-ctx.Done():
+			return
+		}
+	}
 }

@@ -53,9 +53,10 @@ func color(state string) tcell.Color {
 	switch state {
 	case "running":
 		return tcell.ColorGreen
-	case "paused", "exited":
+	case "paused":
+		return tcell.ColorOrange
+	case "exited":
 		return tcell.ColorLightGray
-		// return tcell.ColorWhite
 	case "removing", "dead":
 		return tcell.ColorRed
 	case "created", "restarting":

@@ -30,11 +30,10 @@ func NewHeader(dhost, dversion string) *Header {
 		SetTextColor(tcell.ColorMediumBlue)
 
 	keyBindings := tview.NewTextView().
-		SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<l>[gray]   Logs").
-		SetTextAlign(tview.AlignCenter).
+		SetTextAlign(tview.AlignLeft).
 		SetDynamicColors(true)
 
-	return &Header{
+	h := &Header{
 		name:        "header",
 		keyBindings: keyBindings,
 		Flex: tview.NewFlex().
@@ -42,6 +41,9 @@ func NewHeader(dhost, dversion string) *Header {
 			AddItem(keyBindings, 0, 1, false).
 			AddItem(appTitle, 0, 1, false),
 	}
+	h.SetKeyBindings("")
+
+	return h
 }
 
 // SetKeyBindings updates the key bindings display for the given page name.
@@ -50,7 +52,10 @@ func (h *Header) SetKeyBindings(name string) {
 	case "log":
 		h.keyBindings.SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<Esc>[gray] Back")
 	default:
-		h.keyBindings.SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<l>[gray]   Logs")
+		h.keyBindings.SetText(`[dodgerblue]<q>[gray]   Quit      [dodgerblue]<u>[gray]   Unpause
+[dodgerblue]<l>[gray]   Logs      [dodgerblue]<p>[gray]   Pause
+[dodgerblue]<s>[gray]   Start
+[dodgerblue]<x>[gray]   Stop`)
 	}
 }
 

@@ -2,24 +2,24 @@ package view
 
 import "github.com/rivo/tview"
 
-type ErrorBar struct {
+type ErrorModal struct {
 	name string
-	*tview.TextView
+	*tview.Modal
 }
 
-func NewErrorBar() *ErrorBar {
-	return &ErrorBar{
-		name: "errorbar",
-		TextView: tview.NewTextView().
-			SetDynamicColors(true).
-			SetTextAlign(tview.AlignLeft),
+func NewErrorModal() *ErrorModal {
+	m := &ErrorModal{
+		name:  "error",
+		Modal: tview.NewModal(),
 	}
+	m.AddButtons([]string{"OK"})
+	return m
 }
 
-func (view *ErrorBar) Populate(err error) {
-	view.SetText("[red]Error: " + err.Error() + "[-]")
+func (m *ErrorModal) Populate(err error) {
+	m.SetText("Error: " + err.Error())
 }
 
-func (view *ErrorBar) Name() string {
-	return view.name
+func (m *ErrorModal) Name() string {
+	return m.name
 }
