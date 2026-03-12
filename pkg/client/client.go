@@ -69,7 +69,7 @@ func (cli *Client) Close() error {
 	return err
 }
 
-func (cli *Client) Shorts(ctx context.Context) ([]container.Short, error) {
+func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
 	sums, err := cli.client.ContainerList(ctx, dcont.ListOptions{All: true, Latest: true})
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
@@ -129,6 +129,22 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 			yield("", err)
 		}
 	}
+}
+
+func (cli *Client) StartContainer(ctx context.Context, id string) error {
+	return cli.client.ContainerStart(ctx, id, dcont.StartOptions{})
+}
+
+func (cli *Client) StopContainer(ctx context.Context, id string) error {
+	return cli.client.ContainerStop(ctx, id, dcont.StopOptions{})
+}
+
+func (cli *Client) PauseContainer(ctx context.Context, id string) error {
+	return cli.client.ContainerPause(ctx, id)
+}
+
+func (cli *Client) UnpauseContainer(ctx context.Context, id string) error {
+	return cli.client.ContainerUnpause(ctx, id)
 }
 
 func (cli *Client) DaemonHost() string {
