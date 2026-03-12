@@ -68,7 +68,39 @@ If a `~/.ssh/config` entry matches the given host, values for `HostName`, `Port`
 
 - Go 1.26+
 
-## Installation
+## Install
+
+Download the binary for your platform from the [releases page](https://github.com/Br0ce/containerctl/releases).
+
+### macOS (Apple Silicon)
+
+```sh
+VERSION=v0.2.0  # replace with the desired version
+curl -L -o containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
+
+# Verify the checksum against the value published on the releases page
+shasum -a 256 containerctl
+
+chmod +x containerctl
+sudo mv containerctl /usr/local/bin/
+containerctl --version
+```
+
+### Linux (amd64)
+
+```sh
+VERSION=v0.2.0  # replace with the desired version
+curl -L -o containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
+
+# Verify the checksum against the value published on the releases page
+sha256sum containerctl
+
+chmod +x containerctl
+sudo mv containerctl /usr/local/bin/
+containerctl --version
+```
+
+## Install from Source
 
 ```sh
 git clone https://github.com/Br0ce/containerctl.git
