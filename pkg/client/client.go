@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"iter"
 	"net"
 	"path/filepath"
@@ -19,6 +18,7 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 
 	"github.com/Br0ce/containerctl/pkg/container"
+	"github.com/Br0ce/containerctl/pkg/file"
 )
 
 type LogSeq = iter.Seq2[string, error]
@@ -151,13 +151,12 @@ func (cli *Client) UnpauseContainer(ctx context.Context, id string) error {
 	return cli.client.ContainerUnpause(ctx, id)
 }
 
-func (cli *Client) AllFiles(ctx context.Context, id string) ([]fs.FileInfo, error) {
-	info, err := cli.client.ContainerInspect(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("inspect container %s: %w", id, err)
-	}
+func (cli *Client) parentDir(ctx context.Context, path file.Info) (string, error) {
+	return "", fmt.Errorf("not implemented")
+}
 
-	rc, _, err := cli.client.CopyFromContainer(ctx, id, info.Config.WorkingDir)
+func (cli *Client) allFiles(ctx context.Context, root file.Info) ([]file.Info, error) {
+	rc, _, err := cli.client.CopyFromContainer(ctx, root.ContainerID, root.Path)
 	if err != nil {
 		return nil, fmt.Errorf("copy from container: %w", err)
 	}
@@ -165,7 +164,6 @@ func (cli *Client) AllFiles(ctx context.Context, id string) ([]fs.FileInfo, erro
 
 	// The Tar stream contains the working directory as its first entry, followed by its contents in “deep-first” order.
 	// We only want the immediate children of the working directory, so we skip the first entry and filter the rest.
-
 	tr := tar.NewReader(rc)
 	// The first entry in the tar stream is the working directory, skip it.
 	start, err := tr.Next()
@@ -174,7 +172,17 @@ func (cli *Client) AllFiles(ctx context.Context, id string) ([]fs.FileInfo, erro
 	}
 	workdir := strings.TrimPrefix(filepath.Clean(start.Name), "/")
 
-	var files []fs.FileInfo
+	var files []file.Info
+
+	// Add the parent directory entry first, so it appears at the top of the list.
+	files = append(files, file.Info{
+		Name:        "..",
+		Path:        filepath.Dir(root.Path),
+		IsDir:       true,
+		ContainerID: root.ContainerID,
+		DisplayName: root.Path,
+	})
+
 	for {
 		entry, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -190,8 +198,27 @@ func (cli *Client) AllFiles(ctx context.Context, id string) ([]fs.FileInfo, erro
 			continue
 		}
 
-		files = append(files, entry.FileInfo())
+		fi := entry.FileInfo()
+		files = append(files, file.Info{
+			Name:        fi.Name(),
+			Path:        filepath.Join(root.Path, fi.Name()),
+			IsDir:       fi.IsDir(),
+			ContainerID: root.ContainerID,
+			DisplayName: root.Path,
+		})
 	}
+}
+
+func (cli *Client) AllFiles(ctx context.Context, root file.Info) ([]file.Info, error) {
+	if root.Path == "" {
+		info, err := cli.client.ContainerInspect(ctx, root.ContainerID)
+		if err != nil {
+			return nil, fmt.Errorf("inspect container %s: %w", root.ContainerID, err)
+		}
+		root.Path = info.Config.WorkingDir
+	}
+
+	return cli.allFiles(ctx, root)
 }
 
 func (cli *Client) DaemonHost() string {

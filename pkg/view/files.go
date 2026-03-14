@@ -1,8 +1,9 @@
 package view
 
 import (
-	"io/fs"
+	"fmt"
 
+	"github.com/Br0ce/containerctl/pkg/file"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -24,16 +25,21 @@ func NewFiles() *Files {
 	}
 }
 
-func (view *Files) Populate(files []fs.FileInfo) {
+func (view *Files) Populate(files []file.Info) {
 	view.Clear()
 
+	if len(files) == 0 {
+		return
+	}
+
+	view.SetTitle(fmt.Sprintf(" %s ", files[0].DisplayName))
 	for row, file := range files {
 		color := tcell.ColorGray
-		if file.IsDir() {
+		if file.IsDir {
 			color = tcell.ColorAqua
 		}
 		view.SetCell(row, 0,
-			tview.NewTableCell(file.Name()).
+			tview.NewTableCell(file.Name).
 				SetTextColor(color).
 				SetExpansion(1).
 				SetReference(file))
@@ -42,4 +48,12 @@ func (view *Files) Populate(files []fs.FileInfo) {
 
 func (view *Files) Name() string {
 	return view.name
+}
+
+func (view *Files) KeyBindings() []KeyBinding {
+	return []KeyBinding{
+		{Key: tcell.KeyRune, Rune: 'q', Desc: "Quit"},
+		{Key: tcell.KeyEsc, Desc: "Back"},
+		{Key: tcell.KeyEnter, Desc: "Open"},
+	}
 }

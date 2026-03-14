@@ -49,6 +49,18 @@ func (view *Container) Name() string {
 	return view.name
 }
 
+func (view *Container) KeyBindings() []KeyBinding {
+	return []KeyBinding{
+		{Key: tcell.KeyRune, Rune: 'q', Desc: "Quit"},
+		{Key: tcell.KeyRune, Rune: 'l', Desc: "Logs"},
+		{Key: tcell.KeyRune, Rune: 's', Desc: "Start"},
+		{Key: tcell.KeyRune, Rune: 'x', Desc: "Stop"},
+		{Key: tcell.KeyRune, Rune: 'u', Desc: "Unpause"},
+		{Key: tcell.KeyRune, Rune: 'p', Desc: "Pause"},
+		{Key: tcell.KeyRune, Rune: 'f', Desc: "Files"},
+	}
+}
+
 func color(state string) tcell.Color {
 	switch state {
 	case "running":
