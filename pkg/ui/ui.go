@@ -32,6 +32,7 @@ type UI struct {
 	rootPages *tview.Pages
 	errCh     chan error
 	log       *view.Log
+	files     *view.Files
 }
 
 // New initializes the UI components and returns a UI instance.
@@ -63,21 +64,25 @@ func New(cfg Config) (*UI, error) {
 		return nil, fmt.Errorf("create client: %w", err)
 	}
 
+	app := tview.NewApplication().EnableMouse(true)
 	header := view.NewHeader(cli.DaemonHost(), cli.DaemonVersion())
 	container := view.NewContainer()
 	log := view.NewLog()
+	files := view.NewFiles()
 	errModal := view.NewErrorModal()
 
 	body := tview.NewPages().
 		AddPage(container.Name(), container, true, true).
-		AddPage(log.Name(), log, true, false)
+		AddPage(log.Name(), log, true, false).
+		AddPage(files.Name(), files, true, false)
 
 	return &UI{
-		app:       tview.NewApplication().EnableMouse(true),
+		app:       app,
 		cli:       cli,
 		header:    header,
 		container: container,
 		log:       log,
+		files:     files,
 		errModal:  errModal,
 		// Buffered channel to avoid blocking when publishing errors. Needs rework.
 		errCh: make(chan error, 1),
@@ -181,6 +186,9 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 			case 'u':
 				ui.handleUnpause(ctx)
 				return nil
+			case 'f':
+				ui.handleFiles(ctx)
+				return nil
 			}
 
 		case tcell.KeyEscape:
@@ -215,6 +223,27 @@ func (ui *UI) handleLogs(ctx context.Context) {
 	ui.body.SwitchToPage(ui.log.Name())
 	ui.header.SetKeyBindings(ui.log.Name())
 	ui.app.SetFocus(ui.log)
+}
+
+func (ui *UI) handleFiles(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+	files, err := ui.cli.AllFiles(ctx, id)
+	if err != nil {
+		ui.publishError(err)
+		return
+	}
+	ui.files.Populate(files)
+	ui.body.SwitchToPage(ui.files.Name())
+	ui.header.SetKeyBindings(ui.files.Name())
+	ui.app.SetFocus(ui.files)
 }
 
 func (ui *UI) handleStart(ctx context.Context) {

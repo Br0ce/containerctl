@@ -1,14 +1,18 @@
 package client
 
 import (
+	"archive/tar"
 	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"iter"
 	"net"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	dcont "github.com/docker/docker/api/types/container"
 	dcli "github.com/docker/docker/client"
@@ -147,10 +151,71 @@ func (cli *Client) UnpauseContainer(ctx context.Context, id string) error {
 	return cli.client.ContainerUnpause(ctx, id)
 }
 
+func (cli *Client) AllFiles(ctx context.Context, id string) ([]fs.FileInfo, error) {
+	info, err := cli.client.ContainerInspect(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("inspect container %s: %w", id, err)
+	}
+
+	rc, _, err := cli.client.CopyFromContainer(ctx, id, info.Config.WorkingDir)
+	if err != nil {
+		return nil, fmt.Errorf("copy from container: %w", err)
+	}
+	defer rc.Close()
+
+	// The Tar stream contains the working directory as its first entry, followed by its contents in “deep-first” order.
+	// We only want the immediate children of the working directory, so we skip the first entry and filter the rest.
+
+	tr := tar.NewReader(rc)
+	// The first entry in the tar stream is the working directory, skip it.
+	start, err := tr.Next()
+	if err != nil {
+		return nil, fmt.Errorf("skip first tar entry: %w", err)
+	}
+	workdir := strings.TrimPrefix(filepath.Clean(start.Name), "/")
+
+	var files []fs.FileInfo
+	for {
+		entry, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return files, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read tar: %w", err)
+		}
+
+		// Only include immediate children of the working directory.
+		dir := filepath.Dir(filepath.Clean(entry.Name))
+		if workdir != dir {
+			continue
+		}
+
+		files = append(files, entry.FileInfo())
+	}
+}
+
 func (cli *Client) DaemonHost() string {
 	return cli.daemonHost
 }
 
 func (cli *Client) DaemonVersion() string {
 	return cli.client.ClientVersion()
+}
+
+func formatSize(size int64) string {
+	const (
+		kb = 1024
+		mb = 1024 * kb
+		gb = 1024 * mb
+	)
+	switch {
+	case size >= gb:
+		return fmt.Sprintf("%.1f GB", float64(size)/float64(gb))
+	case size >= mb:
+		return fmt.Sprintf("%.1f MB", float64(size)/float64(mb))
+	case size >= kb:
+		return fmt.Sprintf("%.1f KB", float64(size)/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", size)
+	}
 }

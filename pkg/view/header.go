@@ -51,10 +51,12 @@ func (h *Header) SetKeyBindings(name string) {
 	switch name {
 	case "log":
 		h.keyBindings.SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<Esc>[gray] Back")
+	case "files":
+		h.keyBindings.SetText("[dodgerblue]<q>[gray]   Quit\n[dodgerblue]<Esc>[gray] Back\n[dodgerblue]<Enter>[gray] Open / Parent dir")
 	default:
 		h.keyBindings.SetText(`[dodgerblue]<q>[gray]   Quit      [dodgerblue]<u>[gray]   Unpause
 [dodgerblue]<l>[gray]   Logs      [dodgerblue]<p>[gray]   Pause
-[dodgerblue]<s>[gray]   Start
+[dodgerblue]<s>[gray]   Start     [dodgerblue]<f>[gray]   Files
 [dodgerblue]<x>[gray]   Stop`)
 	}
 }
