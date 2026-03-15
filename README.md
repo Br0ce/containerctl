@@ -1,6 +1,14 @@
+![Build Status](https://github.com/Br0ce/containerctl/actions/workflows/ci.yml/badge.svg)
+[![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/containerctl)](https://github.com/Br0ce/containerctl)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/containerctl.svg)](https://pkg.go.dev/github.com/Br0ce/containerctl)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/containerctl)](https://goreportcard.com/report/github.com/Br0ce/containerctl)
+
+
 # containerctl
 
 A lightweight terminal UI for Docker container management, built for speed over remote SSH connections
+
+---
 
 ## Overview
 
@@ -8,6 +16,55 @@ A lightweight terminal UI for Docker container management, built for speed over 
 It’s a lightweight CLI that lets you instantly inspect, control, and tail logs from containers — perfect for remote servers where you want speed, not tooling overhead.
 
 It sits as a thin layer between the [tview](https://github.com/rivo/tview) TUI framework and the [Moby](https://github.com/moby/moby) Docker client. It supports connecting to a remote Docker Engine API directly over SSH, so you can manage containers on a remote host without SSHing in manually.
+
+## Install
+
+Download the binary for your platform from the [releases page](https://github.com/Br0ce/containerctl/releases).
+
+### macOS (Apple Silicon)
+
+```sh
+VERSION=v0.3.0  # replace with the desired version
+curl -Lo containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
+
+# Verify the checksum against the value published on the releases page
+shasum -a 256 containerctl
+
+chmod +x containerctl
+sudo mv containerctl /usr/local/bin/
+containerctl --version
+```
+
+### Linux (amd64)
+
+```sh
+VERSION=v0.3.0  # replace with the desired version
+curl -Lo containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
+
+# Verify the checksum against the value published on the releases page
+sha256sum containerctl
+
+chmod +x containerctl
+sudo mv containerctl /usr/local/bin/
+containerctl --version
+```
+
+## Examples
+
+```bash
+  # Connect to local Docker
+  containerctl
+
+  # Connect to remote host using default SSH key from ~/.ssh/config
+  containerctl --host my-host
+
+  # Connect to remote host using with SSH key
+  containerctl --host my-host:23 --identity-file ~/.ssh/id_rsa
+
+  # Connect to remote host with username embedded in host and password prompted
+  containerctl --host username@my-host --ask-password true
+```
+
 
 ## Behavior
 
@@ -39,68 +96,16 @@ If a `~/.ssh/config` entry matches the given host, values for `HostName`, `Port`
 1. `--docker-host` flag
 2. Default: `unix:///var/run/docker.sock`
 
-## Examples
-
-```bash
-  # Connect to local Docker
-  containerctl
-
-  # Connect to remote host using default SSH key from ~/.ssh/config
-  containerctl --host my-host
-
-  # Connect to remote host using with SSH key
-  containerctl --host my-host:23 --identity-file ~/.ssh/id_rsa
-
-  # Connect to remote host with username embedded in host and password prompted
-  containerctl --host username@my-host --ask-password true
-```
-
 ---
 
-![Build Status](https://github.com/Br0ce/containerctl/actions/workflows/ci.yml/badge.svg)
-[![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/containerctl)](https://github.com/Br0ce/containerctl)
-[![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/containerctl.svg)](https://pkg.go.dev/github.com/Br0ce/containerctl)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/containerctl)](https://goreportcard.com/report/github.com/Br0ce/containerctl)
+## Install from Source
 
----
-
-## Requirements
+Requirements
 
 - Go 1.26+
 
-## Install
 
-Download the binary for your platform from the [releases page](https://github.com/Br0ce/containerctl/releases).
 
-### macOS (Apple Silicon)
-
-```sh
-VERSION=v0.2.0  # replace with the desired version
-curl -L -o containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
-
-# Verify the checksum against the value published on the releases page
-shasum -a 256 containerctl
-
-chmod +x containerctl
-sudo mv containerctl /usr/local/bin/
-containerctl --version
-```
-
-### Linux (amd64)
-
-```sh
-VERSION=v0.2.0  # replace with the desired version
-curl -L -o containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
-
-# Verify the checksum against the value published on the releases page
-sha256sum containerctl
-
-chmod +x containerctl
-sudo mv containerctl /usr/local/bin/
-containerctl --version
-```
-
-## Install from Source
 
 ```sh
 git clone https://github.com/Br0ce/containerctl.git
@@ -110,7 +115,7 @@ make build
 
 The binary will be placed at `./bin/containerctl`.
 
-## Usage
+### Usage
 
 ```sh
 ./bin/containerctl

@@ -9,6 +9,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/Br0ce/containerctl/pkg/client"
+	"github.com/Br0ce/containerctl/pkg/file"
 	"github.com/Br0ce/containerctl/pkg/view"
 )
 
@@ -32,6 +33,7 @@ type UI struct {
 	rootPages *tview.Pages
 	errCh     chan error
 	log       *view.Log
+	files     *view.Files
 }
 
 // New initializes the UI components and returns a UI instance.
@@ -63,26 +65,32 @@ func New(cfg Config) (*UI, error) {
 		return nil, fmt.Errorf("create client: %w", err)
 	}
 
+	app := tview.NewApplication().EnableMouse(true)
 	header := view.NewHeader(cli.DaemonHost(), cli.DaemonVersion())
 	container := view.NewContainer()
 	log := view.NewLog()
+	files := view.NewFiles()
 	errModal := view.NewErrorModal()
 
 	body := tview.NewPages().
 		AddPage(container.Name(), container, true, true).
-		AddPage(log.Name(), log, true, false)
+		AddPage(log.Name(), log, true, false).
+		AddPage(files.Name(), files, true, false)
 
-	return &UI{
-		app:       tview.NewApplication().EnableMouse(true),
+	ui := &UI{
+		app:       app,
 		cli:       cli,
 		header:    header,
 		container: container,
 		log:       log,
+		files:     files,
 		errModal:  errModal,
 		// Buffered channel to avoid blocking when publishing errors. Needs rework.
 		errCh: make(chan error, 1),
 		body:  body,
-	}, nil
+	}
+	header.SetKeyBindings(container.KeyBindings())
+	return ui, nil
 }
 
 // Run starts the TUI application and blocks until it exits.
@@ -156,42 +164,60 @@ func (ui *UI) populateContainers(ctx context.Context) {
 	ui.container.Populate(shorts)
 }
 
-// inputCapture sets up global keybindings for the app.
+// inputCapture sets up keybindings for the app.
+// View-specific bindings are dispatched first, then global bindings (q, Esc).
 func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 	ui.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// View-specific keys.
+		name, _ := ui.body.GetFrontPage()
+		switch name {
+		case ui.container.Name():
+			if event.Key() == tcell.KeyRune {
+				switch event.Rune() {
+				case 'l':
+					ui.handleLogs(ctx)
+					return nil
+				case 's':
+					ui.handleStart(ctx)
+					return nil
+				case 'x':
+					ui.handleStop(ctx)
+					return nil
+				case 'p':
+					ui.handlePause(ctx)
+					return nil
+				case 'u':
+					ui.handleUnpause(ctx)
+					return nil
+				case 'f':
+					ui.handleFiles(ctx)
+					return nil
+				}
+			}
+		case ui.files.Name():
+			if event.Key() == tcell.KeyEnter {
+				ui.handleFiles(ctx)
+				return nil
+			}
+		}
+
+		// Global keys.
 		switch event.Key() {
 		case tcell.KeyRune:
-			switch event.Rune() {
-			case 'q':
+			if event.Rune() == 'q' {
 				cancel()
 				ui.app.Stop()
 				return nil
-			case 'l':
-				ui.handleLogs(ctx)
-				return nil
-			case 's':
-				ui.handleStart(ctx)
-				return nil
-			case 'x':
-				ui.handleStop(ctx)
-				return nil
-			case 'p':
-				ui.handlePause(ctx)
-				return nil
-			case 'u':
-				ui.handleUnpause(ctx)
-				return nil
 			}
-
 		case tcell.KeyEscape:
 			// If the error modal is front, let it handle Esc via its done func.
-			name, _ := ui.rootPages.GetFrontPage()
-			if name == ui.errModal.Name() {
+			frontName, _ := ui.rootPages.GetFrontPage()
+			if frontName == ui.errModal.Name() {
 				return event
 			}
-			// Return to the default page from any page.
+			// Return to the container page from any view.
 			ui.body.SwitchToPage(ui.container.Name())
-			ui.header.SetKeyBindings(ui.container.Name())
+			ui.header.SetKeyBindings(ui.container.KeyBindings())
 			ui.app.SetFocus(ui.container)
 			return nil
 		}
@@ -213,8 +239,56 @@ func (ui *UI) handleLogs(ctx context.Context) {
 	id := ui.container.GetCell(row, 0).GetReference().(string)
 	ui.log.Populate(ui.cli.Logs(ctx, id))
 	ui.body.SwitchToPage(ui.log.Name())
-	ui.header.SetKeyBindings(ui.log.Name())
+	ui.header.SetKeyBindings(ui.log.KeyBindings())
 	ui.app.SetFocus(ui.log)
+}
+
+func (ui *UI) handleFiles(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+
+	switch name {
+	case ui.container.Name():
+		row, _ := ui.container.GetSelection()
+		if row < 1 {
+			return
+		}
+		id := ui.container.GetCell(row, 0).GetReference().(string)
+		files, err := ui.cli.FilesIn(ctx, file.Info{ContainerID: id})
+		if err != nil {
+			ui.publishError(err)
+			return
+		}
+		ui.files.Populate(files)
+		ui.body.SwitchToPage(ui.files.Name())
+		ui.header.SetKeyBindings(ui.files.KeyBindings())
+		ui.app.SetFocus(ui.files)
+	case ui.files.Name():
+		row, _ := ui.files.GetSelection()
+		if row < 0 {
+			return
+		}
+
+		selection, ok := ui.files.GetCell(row, 0).GetReference().(file.Info)
+		if !ok {
+			ui.publishError(fmt.Errorf("invalid file reference"))
+			return
+		}
+
+		// If the selection is not a directory, do nothing on Enter.
+		if !selection.IsDir {
+			return
+		}
+
+		files, err := ui.cli.FilesIn(ctx, selection)
+		if err != nil {
+			ui.publishError(err)
+			return
+		}
+		ui.files.Populate(files)
+		ui.body.SwitchToPage(ui.files.Name())
+		ui.header.SetKeyBindings(ui.files.KeyBindings())
+		ui.app.SetFocus(ui.files)
+	}
 }
 
 func (ui *UI) handleStart(ctx context.Context) {

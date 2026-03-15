@@ -41,3 +41,10 @@ func (view *Log) Populate(logs client.LogSeq) {
 func (view *Log) Name() string {
 	return view.name
 }
+
+func (view *Log) KeyBindings() []KeyBinding {
+	return []KeyBinding{
+		{Key: tcell.KeyRune, Rune: 'q', Desc: "Quit"},
+		{Key: tcell.KeyEsc, Desc: "Back"},
+	}
+}
