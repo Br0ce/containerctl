@@ -1,13 +1,14 @@
+![Build Status](https://github.com/Br0ce/containerctl/actions/workflows/ci.yml/badge.svg)
+[![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/containerctl)](https://github.com/Br0ce/containerctl)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/containerctl.svg)](https://pkg.go.dev/github.com/Br0ce/containerctl)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/containerctl)](https://goreportcard.com/report/github.com/Br0ce/containerctl)
+
+
 # containerctl
 
 A lightweight terminal UI for Docker container management, built for speed over remote SSH connections
 
 ---
-
-![Build Status](https://github.com/Br0ce/containerctl/actions/workflows/ci.yml/badge.svg)
-[![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/containerctl)](https://github.com/Br0ce/containerctl)
-[![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/containerctl.svg)](https://pkg.go.dev/github.com/Br0ce/containerctl)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/containerctl)](https://goreportcard.com/report/github.com/Br0ce/containerctl)
 
 ## Overview
 
