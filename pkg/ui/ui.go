@@ -253,7 +253,7 @@ func (ui *UI) handleFiles(ctx context.Context) {
 			return
 		}
 		id := ui.container.GetCell(row, 0).GetReference().(string)
-		files, err := ui.cli.AllFiles(ctx, file.Info{ContainerID: id})
+		files, err := ui.cli.FilesIn(ctx, file.Info{ContainerID: id})
 		if err != nil {
 			ui.publishError(err)
 			return
@@ -268,13 +268,18 @@ func (ui *UI) handleFiles(ctx context.Context) {
 			return
 		}
 
-		info, ok := ui.files.GetCell(row, 0).GetReference().(file.Info)
+		selection, ok := ui.files.GetCell(row, 0).GetReference().(file.Info)
 		if !ok {
 			ui.publishError(fmt.Errorf("invalid file reference"))
 			return
 		}
 
-		files, err := ui.cli.AllFiles(ctx, info)
+		// If the selection is not a directory, do nothing on Enter.
+		if !selection.IsDir {
+			return
+		}
+
+		files, err := ui.cli.FilesIn(ctx, selection)
 		if err != nil {
 			ui.publishError(err)
 			return

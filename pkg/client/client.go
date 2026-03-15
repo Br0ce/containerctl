@@ -151,11 +151,7 @@ func (cli *Client) UnpauseContainer(ctx context.Context, id string) error {
 	return cli.client.ContainerUnpause(ctx, id)
 }
 
-func (cli *Client) parentDir(ctx context.Context, path file.Info) (string, error) {
-	return "", fmt.Errorf("not implemented")
-}
-
-func (cli *Client) allFiles(ctx context.Context, root file.Info) ([]file.Info, error) {
+func (cli *Client) filesIn(ctx context.Context, root file.Info) ([]file.Info, error) {
 	rc, _, err := cli.client.CopyFromContainer(ctx, root.ContainerID, root.Path)
 	if err != nil {
 		return nil, fmt.Errorf("copy from container: %w", err)
@@ -163,25 +159,29 @@ func (cli *Client) allFiles(ctx context.Context, root file.Info) ([]file.Info, e
 	defer rc.Close()
 
 	// The Tar stream contains the working directory as its first entry, followed by its contents in “deep-first” order.
-	// We only want the immediate children of the working directory, so we skip the first entry and filter the rest.
 	tr := tar.NewReader(rc)
+
 	// The first entry in the tar stream is the working directory, skip it.
 	start, err := tr.Next()
 	if err != nil {
 		return nil, fmt.Errorf("skip first tar entry: %w", err)
 	}
-	workdir := strings.TrimPrefix(filepath.Clean(start.Name), "/")
-
 	var files []file.Info
+	workdir := start.Name
 
-	// Add the parent directory entry first, so it appears at the top of the list.
-	files = append(files, file.Info{
-		Name:        "..",
-		Path:        filepath.Dir(root.Path),
-		IsDir:       true,
-		ContainerID: root.ContainerID,
-		DisplayName: root.Path,
-	})
+	// If the working directory is not the root, we need to trim the prefix to get the correct paths for the children.
+	if workdir != "/" {
+		workdir = strings.TrimPrefix(filepath.Clean(start.Name), "/")
+
+		// Add the parent directory entry first, so it appears at the top of the list.
+		files = append(files, file.Info{
+			Name:        "..",
+			Path:        filepath.Dir(root.Path),
+			IsDir:       true,
+			ContainerID: root.ContainerID,
+			DisplayName: root.Path,
+		})
+	}
 
 	for {
 		entry, err := tr.Next()
@@ -209,16 +209,29 @@ func (cli *Client) allFiles(ctx context.Context, root file.Info) ([]file.Info, e
 	}
 }
 
-func (cli *Client) AllFiles(ctx context.Context, root file.Info) ([]file.Info, error) {
-	if root.Path == "" {
-		info, err := cli.client.ContainerInspect(ctx, root.ContainerID)
-		if err != nil {
-			return nil, fmt.Errorf("inspect container %s: %w", root.ContainerID, err)
-		}
+// FilesIn returns the files in the given directory inside the container.
+// If the Path field of the root is empty, it defaults to the working directory of the container,
+// or "/" if the working directory is not set.
+func (cli *Client) FilesIn(ctx context.Context, root file.Info) ([]file.Info, error) {
+	if root.Path != "" {
+		return cli.filesIn(ctx, root)
+	}
+
+	// Since path is empty, we try to get the working directory of the container and set it as root.Path.
+	info, err := cli.client.ContainerInspect(ctx, root.ContainerID)
+	if err != nil {
+		return nil, fmt.Errorf("inspect container %s: %w", root.ContainerID, err)
+	}
+	if info.Config != nil {
 		root.Path = info.Config.WorkingDir
 	}
 
-	return cli.allFiles(ctx, root)
+	// If path is still not set, default to "/".
+	if root.Path == "" {
+		root.Path = "/"
+	}
+
+	return cli.filesIn(ctx, root)
 }
 
 func (cli *Client) DaemonHost() string {
@@ -227,22 +240,4 @@ func (cli *Client) DaemonHost() string {
 
 func (cli *Client) DaemonVersion() string {
 	return cli.client.ClientVersion()
-}
-
-func formatSize(size int64) string {
-	const (
-		kb = 1024
-		mb = 1024 * kb
-		gb = 1024 * mb
-	)
-	switch {
-	case size >= gb:
-		return fmt.Sprintf("%.1f GB", float64(size)/float64(gb))
-	case size >= mb:
-		return fmt.Sprintf("%.1f MB", float64(size)/float64(mb))
-	case size >= kb:
-		return fmt.Sprintf("%.1f KB", float64(size)/float64(kb))
-	default:
-		return fmt.Sprintf("%d B", size)
-	}
 }
