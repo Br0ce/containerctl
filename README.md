@@ -25,13 +25,13 @@ Download the binary for your platform from the [releases page](https://github.co
 
 ```sh
 VERSION=v0.3.0  # replace with the desired version
-curl -Lo containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
+curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
 
 # Verify the checksum against the value published on the releases page
-shasum -a 256 containerctl
+shasum -a 256 containerctl-${VERSION}-darwin-arm64
 
-chmod +x containerctl
-sudo mv containerctl /usr/local/bin/
+chmod +x containerctl-${VERSION}-darwin-arm64
+sudo mv containerctl-${VERSION}-darwin-arm64 /usr/local/bin/containerctl
 containerctl --version
 ```
 
@@ -39,13 +39,13 @@ containerctl --version
 
 ```sh
 VERSION=v0.3.0  # replace with the desired version
-curl -Lo containerctl https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
+curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
 
 # Verify the checksum against the value published on the releases page
-sha256sum containerctl
+sha256sum containerctl-${VERSION}-linux-amd64
 
-chmod +x containerctl
-sudo mv containerctl /usr/local/bin/
+chmod +x containerctl-${VERSION}-linux-amd64
+sudo mv containerctl-${VERSION}-linux-amd64 /usr/local/bin/containerctl
 containerctl --version
 ```
 
@@ -65,37 +65,6 @@ containerctl --version
   containerctl --host username@my-host --ask-password true
 ```
 
-
-## Behavior
-
-#### Local mode (no `--host`)
-
-Connects to a local Docker API-compatible socket using the first available option:
-
-1. `DOCKER_HOST`, `DOCKER_API_VERSION`, `DOCKER_CERT_PATH` or `DOCKER_TLS_VERIFY` environment variable
-2. `--docker-host` flag
-3. Default: `unix:///var/run/docker.sock`
-
-#### Remote mode (`--host`)
-
-Connects securely over SSH. Host key verification is enforced via `~/.ssh/known_hosts`.
-
-If a `~/.ssh/config` entry matches the given host, values for `HostName`, `Port`, `User`, or `IdentityFile` are read from it and take precedence over command-line arguments to replicate OpenSSH behavior.
-
-**Username** is resolved in this order:
-1. `--username` flag
-2. `user@hostname` syntax in `--host`
-3. Current system user
-
-**Authentication** uses password if `--ask-password` is set, otherwise a private key resolved in this order:
-1. `--identity-file` flag (must be inside `~/.ssh/`)
-2. `~/.ssh/config` `IdentityFile` entry for the host
-3. Default keys: `~/.ssh/id_ed25519`, `id_rsa`, `id_ecdsa`
-
-**Docker Host** on the remote host (note: `DOCKER_HOST`, `DOCKER_API_VERSION`, `DOCKER_CERT_PATH` and `DOCKER_TLS_VERIFY` are ignored in remote mode):
-1. `--docker-host` flag
-2. Default: `unix:///var/run/docker.sock`
-
 ---
 
 ## Install from Source
@@ -103,9 +72,6 @@ If a `~/.ssh/config` entry matches the given host, values for `HostName`, `Port`
 Requirements
 
 - Go 1.26+
-
-
-
 
 ```sh
 git clone https://github.com/Br0ce/containerctl.git
