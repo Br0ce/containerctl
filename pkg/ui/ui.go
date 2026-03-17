@@ -9,6 +9,7 @@ import (
 	"github.com/rivo/tview"
 
 	"github.com/Br0ce/containerctl/pkg/client"
+	"github.com/Br0ce/containerctl/pkg/container"
 	"github.com/Br0ce/containerctl/pkg/file"
 	"github.com/Br0ce/containerctl/pkg/view"
 )
@@ -29,11 +30,12 @@ type UI struct {
 	container *view.Container
 	errModal  *view.ErrorModal
 	header    *view.Header
+	file      *view.Files
+	log       *view.Log
 	body      *tview.Pages
 	rootPages *tview.Pages
 	errCh     chan error
-	log       *view.Log
-	files     *view.Files
+	shorts    []container.Short
 }
 
 // New initializes the UI components and returns a UI instance.
@@ -65,6 +67,17 @@ func New(cfg Config) (*UI, error) {
 		return nil, fmt.Errorf("create client: %w", err)
 	}
 
+	tview.Borders.TopLeft = '╭'
+	tview.Borders.TopRight = '╮'
+	tview.Borders.BottomLeft = '╰'
+	tview.Borders.BottomRight = '╯'
+	tview.Borders.HorizontalFocus = tview.Borders.Horizontal
+	tview.Borders.VerticalFocus = tview.Borders.Vertical
+	tview.Borders.TopLeftFocus = tview.Borders.TopLeft
+	tview.Borders.TopRightFocus = tview.Borders.TopRight
+	tview.Borders.BottomLeftFocus = tview.Borders.BottomLeft
+	tview.Borders.BottomRightFocus = tview.Borders.BottomRight
+
 	app := tview.NewApplication().EnableMouse(true)
 	header := view.NewHeader(cli.DaemonHost(), cli.DaemonVersion())
 	container := view.NewContainer()
@@ -83,7 +96,7 @@ func New(cfg Config) (*UI, error) {
 		header:    header,
 		container: container,
 		log:       log,
-		files:     files,
+		file:      files,
 		errModal:  errModal,
 		// Buffered channel to avoid blocking when publishing errors. Needs rework.
 		errCh: make(chan error, 1),
@@ -101,7 +114,7 @@ func (ui *UI) Run(ctx context.Context) error {
 
 	mainLayout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(ui.header, 5, 0, false).
+		AddItem(ui.header, 4, 0, false).
 		AddItem(ui.body, 0, 1, true)
 
 	ui.rootPages = tview.NewPages().
@@ -125,7 +138,11 @@ func (ui *UI) Run(ctx context.Context) error {
 			return
 		}
 
-		ui.app.QueueUpdateDraw(func() { ui.container.Populate(shorts) })
+		ui.app.QueueUpdateDraw(func() {
+			ui.shorts = shorts
+			ui.container.Populate(shorts)
+			ui.header.SetInfo(ui.container.InfoHeader())
+		})
 	}()
 
 	return ui.app.SetRoot(ui.rootPages, true).Run()
@@ -161,7 +178,9 @@ func (ui *UI) populateContainers(ctx context.Context) {
 		ui.publishError(err)
 		return
 	}
+	ui.shorts = shorts
 	ui.container.Populate(shorts)
+	ui.header.SetInfo(ui.container.InfoHeader())
 }
 
 // inputCapture sets up keybindings for the app.
@@ -194,7 +213,7 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 					return nil
 				}
 			}
-		case ui.files.Name():
+		case ui.file.Name():
 			if event.Key() == tcell.KeyEnter {
 				ui.handleFiles(ctx)
 				return nil
@@ -218,6 +237,7 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 			// Return to the container page from any view.
 			ui.body.SwitchToPage(ui.container.Name())
 			ui.header.SetKeyBindings(ui.container.KeyBindings())
+			ui.header.SetInfo(ui.container.InfoHeader())
 			ui.app.SetFocus(ui.container)
 			return nil
 		}
@@ -237,9 +257,10 @@ func (ui *UI) handleLogs(ctx context.Context) {
 		return
 	}
 	id := ui.container.GetCell(row, 0).GetReference().(string)
-	ui.log.Populate(ui.cli.Logs(ctx, id))
+	ui.log.Populate(ui.cli.Logs(ctx, id), ui.shortByID(id))
 	ui.body.SwitchToPage(ui.log.Name())
 	ui.header.SetKeyBindings(ui.log.KeyBindings())
+	ui.header.SetInfo(ui.log.InfoHeader())
 	ui.app.SetFocus(ui.log)
 }
 
@@ -258,17 +279,18 @@ func (ui *UI) handleFiles(ctx context.Context) {
 			ui.publishError(err)
 			return
 		}
-		ui.files.Populate(files)
-		ui.body.SwitchToPage(ui.files.Name())
-		ui.header.SetKeyBindings(ui.files.KeyBindings())
-		ui.app.SetFocus(ui.files)
-	case ui.files.Name():
-		row, _ := ui.files.GetSelection()
+		ui.file.Populate(files, ui.shortByID(id))
+		ui.body.SwitchToPage(ui.file.Name())
+		ui.header.SetKeyBindings(ui.file.KeyBindings())
+		ui.header.SetInfo(ui.file.InfoHeader())
+		ui.app.SetFocus(ui.file)
+	case ui.file.Name():
+		row, _ := ui.file.GetSelection()
 		if row < 0 {
 			return
 		}
 
-		selection, ok := ui.files.GetCell(row, 0).GetReference().(file.Info)
+		selection, ok := ui.file.GetCell(row, 0).GetReference().(file.Info)
 		if !ok {
 			ui.publishError(fmt.Errorf("invalid file reference"))
 			return
@@ -284,10 +306,10 @@ func (ui *UI) handleFiles(ctx context.Context) {
 			ui.publishError(err)
 			return
 		}
-		ui.files.Populate(files)
-		ui.body.SwitchToPage(ui.files.Name())
-		ui.header.SetKeyBindings(ui.files.KeyBindings())
-		ui.app.SetFocus(ui.files)
+		ui.file.Populate(files, container.Short{})
+		ui.body.SwitchToPage(ui.file.Name())
+		ui.header.SetKeyBindings(ui.file.KeyBindings())
+		ui.app.SetFocus(ui.file)
 	}
 }
 
@@ -381,6 +403,15 @@ func (ui *UI) publishError(err error) {
 	case ui.errCh <- err:
 	default:
 	}
+}
+
+func (ui *UI) shortByID(id string) container.Short {
+	for _, s := range ui.shorts {
+		if s.ID == id {
+			return s
+		}
+	}
+	return container.Short{}
 }
 
 // listenErrors reads from errCh and displays the error modal.

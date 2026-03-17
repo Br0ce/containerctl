@@ -15,45 +15,53 @@ type KeyBinding struct {
 	Desc string
 }
 
+// InfoItem is a single key-value entry for display in the Info panel.
+type InfoItem struct {
+	Key   string
+	Value string
+}
+
 // Page is implemented by all body views to expose their name and active key bindings.
 type Page interface {
 	Name() string
 	KeyBindings() []KeyBinding
+	InfoHeader() []InfoItem
 }
 
 type Header struct {
 	name        string
 	keyBindings *tview.TextView
+	infoView    *tview.TextView
 	*tview.Flex
 }
 
 func NewHeader(dhost, dversion string) *Header {
 	contextView := tview.NewTextView().
-		SetText(fmt.Sprintf("Docker Engine API Host:    [white]%s[aqua]\nDocker Engine API Version: [white]%s", dhost, dversion)).
+		SetText(fmt.Sprintf("[dodgerblue]Host:    [silver]%s[dodgerblue]\nVersion: [silver]%s", dhost, dversion)).
 		SetTextAlign(tview.AlignLeft).
-		SetTextColor(tcell.ColorAqua).
+		SetTextColor(tcell.ColorDodgerBlue).
 		SetDynamicColors(true)
-
-	appTitle := tview.NewTextView().
-		SetText(`                 _        _                     _   _ 
-  ___ ___  _ __ | |_ __ _(_)_ __   ___ _ __ ___| |_| |
- / __/ _ \| '_ \| __/ _` + "`" + ` | | '_ \ / _ \ '__/ __| __| |
-| (_| (_) | | | | || (_| | | | | |  __/ | | (__| |_| |
- \___\___/|_| |_|\__\__,_|_|_| |_|\___|_|  \___|\__|_|`).
-		SetTextAlign(tview.AlignRight).
-		SetTextColor(tcell.ColorMediumBlue)
+	contextView.SetTitle(" Docker Engine API ").SetBorder(true).SetTitleColor(tcell.ColorDodgerBlue)
 
 	keyBindings := tview.NewTextView().
 		SetTextAlign(tview.AlignLeft).
 		SetDynamicColors(true)
+	keyBindings.SetTitle(" Key Bindings ").SetBorder(true).SetTitleColor(tcell.ColorDodgerBlue)
+
+	infoView := tview.NewTextView().
+		SetTextAlign(tview.AlignLeft).
+		SetTextColor(tcell.ColorDodgerBlue).
+		SetDynamicColors(true)
+	infoView.SetTitle(" Info ").SetBorder(true).SetTitleColor(tcell.ColorDodgerBlue)
 
 	return &Header{
 		name:        "header",
 		keyBindings: keyBindings,
+		infoView:    infoView,
 		Flex: tview.NewFlex().
 			AddItem(contextView, 0, 1, false).
-			AddItem(keyBindings, 0, 1, false).
-			AddItem(appTitle, 0, 1, false),
+			AddItem(keyBindings, 0, 2, false).
+			AddItem(infoView, 0, 1, false),
 	}
 }
 
@@ -66,19 +74,54 @@ func (h *Header) SetKeyBindings(bindings []KeyBinding) {
 	}
 
 	var sb strings.Builder
-	if len(bindings) > 4 {
-		half := (len(bindings) + 1) / 2
-		for i := 0; i < half; i++ {
-			fmt.Fprintf(&sb, "[dodgerblue]<%s>[gray]   %-10s", keyStr(bindings[i]), bindings[i].Desc)
-			if j := i + half; j < len(bindings) {
+	n := len(bindings)
+	switch {
+	case n > 6:
+		// Four columns, 2 rows.
+		for i := 0; i < 2; i++ {
+			fmt.Fprintf(&sb, "[black:dodgerblue] %s [-:-]  [silver]%-12s", keyStr(bindings[i]), bindings[i].Desc)
+			for col := 1; col < 4; col++ {
+				if j := i + col*2; j < n {
+					r := bindings[j]
+					fmt.Fprintf(&sb, "    [black:dodgerblue] %s [-:-]  [silver]%-12s", keyStr(r), r.Desc)
+				}
+			}
+			if i < 1 {
+				sb.WriteString("\n")
+			}
+		}
+	case n > 4:
+		// Three columns, 2 rows.
+		chunk := 2
+		for i := 0; i < chunk; i++ {
+			fmt.Fprintf(&sb, "[black:dodgerblue] %s [-:-]  [silver]%-12s", keyStr(bindings[i]), bindings[i].Desc)
+			if j := i + chunk; j < n {
 				r := bindings[j]
-				fmt.Fprintf(&sb, "  [dodgerblue]<%s>[gray]   %s", keyStr(r), r.Desc)
+				fmt.Fprintf(&sb, "    [black:dodgerblue] %s [-:-]  [silver]%-12s", keyStr(r), r.Desc)
+			}
+			if k := i + 2*chunk; k < n {
+				r := bindings[k]
+				fmt.Fprintf(&sb, "    [black:dodgerblue] %s [-:-]  [silver]%s", keyStr(r), r.Desc)
+			}
+			if i < chunk-1 {
+				sb.WriteString("\n")
+			}
+		}
+	case n > 2:
+		// Two columns, 2 rows.
+		half := 2
+		for i := 0; i < half; i++ {
+			fmt.Fprintf(&sb, "[black:dodgerblue] %s [-:-]  [silver]%-12s", keyStr(bindings[i]), bindings[i].Desc)
+			if j := i + half; j < n {
+				r := bindings[j]
+				fmt.Fprintf(&sb, "    [black:dodgerblue] %s [-:-]  [silver]%s", keyStr(r), r.Desc)
 			}
 			if i < half-1 {
 				sb.WriteString("\n")
 			}
 		}
-	} else {
+	default:
+		// Single column.
 		maxKeyLen := 0
 		for _, b := range bindings {
 			if l := len(keyStr(b)); l > maxKeyLen {
@@ -87,8 +130,8 @@ func (h *Header) SetKeyBindings(bindings []KeyBinding) {
 		}
 		for i, b := range bindings {
 			pad := strings.Repeat(" ", maxKeyLen-len(keyStr(b)))
-			fmt.Fprintf(&sb, "[dodgerblue]<%s>%s[gray]   %s", keyStr(b), pad, b.Desc)
-			if i < len(bindings)-1 {
+			fmt.Fprintf(&sb, "[black:dodgerblue] %s%s [-:-]  [silver]%s", keyStr(b), pad, b.Desc)
+			if i < n-1 {
 				sb.WriteString("\n")
 			}
 		}
@@ -108,6 +151,29 @@ func keyStr(b KeyBinding) string {
 	default:
 		return fmt.Sprintf("key(%d)", b.Key)
 	}
+}
+
+func (h *Header) SetInfo(items []InfoItem) {
+	if len(items) == 0 {
+		h.infoView.SetText("")
+		return
+	}
+	// Display at most two rows; each row pairs two items side by side.
+	var sb strings.Builder
+	rows := 2
+	for row := 0; row < rows; row++ {
+		if row >= len(items) {
+			break
+		}
+		fmt.Fprintf(&sb, "[dodgerblue]%-8s[silver]%-16s", items[row].Key, items[row].Value)
+		if col := row + rows; col < len(items) {
+			fmt.Fprintf(&sb, "    [dodgerblue]%-8s[silver]%s", items[col].Key, items[col].Value)
+		}
+		if row < rows-1 {
+			sb.WriteString("\n")
+		}
+	}
+	h.infoView.SetText(sb.String())
 }
 
 func (view *Header) Name() string {
