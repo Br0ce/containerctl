@@ -17,6 +17,17 @@ It’s a lightweight CLI that lets you instantly inspect, control, and tail logs
 
 It sits as a thin layer between the [tview](https://github.com/rivo/tview) TUI framework and the [Moby](https://github.com/moby/moby) Docker client. It supports connecting to a remote Docker Engine API directly over SSH, so you can manage containers on a remote host without SSHing in manually.
 
+## TUI
+
+The default view lists all containers on the connected host. Select a container with the arrow keys, then:
+
+- Press `l` to stream its logs in real time.
+- Press `t` to open an interactive shell session inside the container. This is also the preferred way to explore a running container's filesystem. Exit the shell as usual with `exit`.
+- Press `f` to browse the filesystem without a shell — useful for stopped containers or distroless images that have no shell. The view reads only the tar headers of the container's filesystem, so no data is extracted. Navigate into directories with `Enter` or use `..` to go up.
+- Press `s` / `x` to start or stop a container, or `p` / `u` to pause or unpause it.
+
+Press `Esc` from any sub-view to return to the container list, or `q` to quit.
+
 ## Install
 
 Download the binary for your platform from the [releases page](https://github.com/Br0ce/containerctl/releases).

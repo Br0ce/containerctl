@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -193,23 +194,26 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 		case ui.container.Name():
 			if event.Key() == tcell.KeyRune {
 				switch event.Rune() {
+				case 'f':
+					ui.handleFiles(ctx)
+					return nil
 				case 'l':
 					ui.handleLogs(ctx)
-					return nil
-				case 's':
-					ui.handleStart(ctx)
-					return nil
-				case 'x':
-					ui.handleStop(ctx)
 					return nil
 				case 'p':
 					ui.handlePause(ctx)
 					return nil
+				case 's':
+					ui.handleStart(ctx)
+					return nil
+				case 't':
+					ui.handleTerminal(ctx)
+					return nil
 				case 'u':
 					ui.handleUnpause(ctx)
 					return nil
-				case 'f':
-					ui.handleFiles(ctx)
+				case 'x':
+					ui.handleStop(ctx)
 					return nil
 				}
 			}
@@ -243,25 +247,6 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 		}
 		return event
 	})
-}
-
-func (ui *UI) handleLogs(ctx context.Context) {
-	// Only act when the table is the containers page.
-	name, _ := ui.body.GetFrontPage()
-	if name != ui.container.Name() {
-		return
-	}
-	row, _ := ui.container.GetSelection()
-	if row < 1 {
-		// row 0 is the header — nothing to inspect.
-		return
-	}
-	id := ui.container.GetCell(row, 0).GetReference().(string)
-	ui.log.Populate(ui.cli.Logs(ctx, id), ui.shortByID(id))
-	ui.body.SwitchToPage(ui.log.Name())
-	ui.header.SetKeyBindings(ui.log.KeyBindings())
-	ui.header.SetInfo(ui.log.InfoHeader())
-	ui.app.SetFocus(ui.log)
 }
 
 func (ui *UI) handleFiles(ctx context.Context) {
@@ -313,46 +298,23 @@ func (ui *UI) handleFiles(ctx context.Context) {
 	}
 }
 
-func (ui *UI) handleStart(ctx context.Context) {
+func (ui *UI) handleLogs(ctx context.Context) {
+	// Only act when the table is the containers page.
 	name, _ := ui.body.GetFrontPage()
 	if name != ui.container.Name() {
 		return
 	}
 	row, _ := ui.container.GetSelection()
 	if row < 1 {
+		// row 0 is the header — nothing to inspect.
 		return
 	}
 	id := ui.container.GetCell(row, 0).GetReference().(string)
-
-	// Start the container in the background.
-	go func() {
-		err := ui.cli.StartContainer(ctx, id)
-		if err != nil {
-			ui.publishError(err)
-		}
-	}()
-	ui.populateContainers(ctx)
-}
-
-func (ui *UI) handleStop(ctx context.Context) {
-	name, _ := ui.body.GetFrontPage()
-	if name != ui.container.Name() {
-		return
-	}
-	row, _ := ui.container.GetSelection()
-	if row < 1 {
-		return
-	}
-	id := ui.container.GetCell(row, 0).GetReference().(string)
-
-	// Stop the container in the background.
-	go func() {
-		err := ui.cli.StopContainer(ctx, id)
-		if err != nil {
-			ui.publishError(err)
-		}
-	}()
-	ui.populateContainers(ctx)
+	ui.log.Populate(ui.cli.Logs(ctx, id), ui.shortByID(id))
+	ui.body.SwitchToPage(ui.log.Name())
+	ui.header.SetKeyBindings(ui.log.KeyBindings())
+	ui.header.SetInfo(ui.log.InfoHeader())
+	ui.app.SetFocus(ui.log)
 }
 
 func (ui *UI) handlePause(ctx context.Context) {
@@ -376,6 +338,46 @@ func (ui *UI) handlePause(ctx context.Context) {
 	ui.populateContainers(ctx)
 }
 
+func (ui *UI) handleStart(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+
+	// Start the container in the background.
+	go func() {
+		err := ui.cli.StartContainer(ctx, id)
+		if err != nil {
+			ui.publishError(err)
+		}
+	}()
+	ui.populateContainers(ctx)
+}
+
+func (ui *UI) handleTerminal(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+	var termErr error
+	ui.app.Suspend(func() {
+		termErr = ui.cli.Terminal(ctx, id, os.Stdin, os.Stdout)
+	})
+	if termErr != nil {
+		ui.publishError(termErr)
+	}
+}
+
 func (ui *UI) handleUnpause(ctx context.Context) {
 	name, _ := ui.body.GetFrontPage()
 	if name != ui.container.Name() {
@@ -390,6 +392,27 @@ func (ui *UI) handleUnpause(ctx context.Context) {
 	// Unpause the container in the background.
 	go func() {
 		err := ui.cli.UnpauseContainer(ctx, id)
+		if err != nil {
+			ui.publishError(err)
+		}
+	}()
+	ui.populateContainers(ctx)
+}
+
+func (ui *UI) handleStop(ctx context.Context) {
+	name, _ := ui.body.GetFrontPage()
+	if name != ui.container.Name() {
+		return
+	}
+	row, _ := ui.container.GetSelection()
+	if row < 1 {
+		return
+	}
+	id := ui.container.GetCell(row, 0).GetReference().(string)
+
+	// Stop the container in the background.
+	go func() {
+		err := ui.cli.StopContainer(ctx, id)
 		if err != nil {
 			ui.publishError(err)
 		}

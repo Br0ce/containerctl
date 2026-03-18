@@ -20,6 +20,7 @@ func NewFiles() *Files {
 		SetBorders(false).
 		SetSelectable(true, false)
 	table.SetBorder(true).SetTitleColor(tcell.ColorDodgerBlue)
+	table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite))
 
 	return &Files{
 		name:  "files",
@@ -35,18 +36,25 @@ func (view *Files) Populate(files []file.Info, short container.Short) {
 		return
 	}
 
+	for col, h := range []string{"Name", "Size"} {
+		view.SetCell(0, col,
+			tview.NewTableCell(h).
+				SetTextColor(tcell.ColorWhite).
+				SetAlign(tview.AlignLeft).
+				SetSelectable(false).
+				SetExpansion(1))
+	}
+
 	view.SetTitle(fmt.Sprintf(" %s ", files[0].DisplayName))
 	for row, file := range files {
-		color := tcell.ColorDimGray
+		nameColor := tcell.ColorDimGray
 		if file.IsDir {
-			color = tcell.ColorDodgerBlue
+			nameColor = tcell.ColorDodgerBlue
 		}
-		view.SetCell(row, 0,
-			tview.NewTableCell(file.Name).
-				SetTextColor(color).
-				SetExpansion(1).
-				SetReference(file))
+		view.SetCell(row+1, 0, tview.NewTableCell(file.Name).SetTextColor(nameColor).SetReference(file))
+		view.SetCell(row+1, 1, tview.NewTableCell(file.SizeString()).SetTextColor(tcell.ColorDimGray).SetReference(file))
 	}
+
 	view.curShort = &short
 }
 

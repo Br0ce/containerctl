@@ -20,6 +20,7 @@ func NewContainer() *Container {
 		SetBorders(false).
 		SetSelectable(true, false)
 	shortsView.SetBorder(true).SetTitle(" Containers ").SetTitleColor(tcell.ColorDodgerBlue)
+	shortsView.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite))
 	return &Container{
 		name:  "container",
 		Table: shortsView,
@@ -59,6 +60,7 @@ func (view *Container) KeyBindings() []KeyBinding {
 	return []KeyBinding{
 		{Key: tcell.KeyRune, Rune: 'q', Desc: "Quit"},
 		{Key: tcell.KeyRune, Rune: 'l', Desc: "Logs"},
+		{Key: tcell.KeyRune, Rune: 't', Desc: "Terminal"},
 		{Key: tcell.KeyRune, Rune: 'f', Desc: "Files"},
 		{Key: tcell.KeyRune, Rune: 's', Desc: "Start"},
 		{Key: tcell.KeyRune, Rune: 'x', Desc: "Stop"},
