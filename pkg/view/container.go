@@ -20,6 +20,7 @@ func NewContainer() *Container {
 		SetBorders(false).
 		SetSelectable(true, false)
 	shortsView.SetBorder(true).SetTitle(" Containers ").SetTitleColor(tcell.ColorDodgerBlue)
+	shortsView.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDodgerBlue).Foreground(tcell.ColorWhite))
 	return &Container{
 		name:  "container",
 		Table: shortsView,

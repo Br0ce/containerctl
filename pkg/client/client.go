@@ -205,6 +205,7 @@ func (cli *Client) filesIn(ctx context.Context, root file.Info) ([]file.Info, er
 			IsDir:       fi.IsDir(),
 			ContainerID: root.ContainerID,
 			DisplayName: root.Path,
+			Size:        fi.Size(),
 		})
 	}
 }
