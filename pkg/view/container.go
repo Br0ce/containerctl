@@ -60,6 +60,7 @@ func (view *Container) KeyBindings() []KeyBinding {
 	return []KeyBinding{
 		{Key: tcell.KeyRune, Rune: 'q', Desc: "Quit"},
 		{Key: tcell.KeyRune, Rune: 'l', Desc: "Logs"},
+		{Key: tcell.KeyRune, Rune: 't', Desc: "Terminal"},
 		{Key: tcell.KeyRune, Rune: 'f', Desc: "Files"},
 		{Key: tcell.KeyRune, Rune: 's', Desc: "Start"},
 		{Key: tcell.KeyRune, Rune: 'x', Desc: "Stop"},

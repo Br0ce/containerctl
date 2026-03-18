@@ -9,13 +9,17 @@ import (
 	"io"
 	"iter"
 	"net"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	dcont "github.com/docker/docker/api/types/container"
 	dcli "github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"golang.org/x/term"
 
 	"github.com/Br0ce/containerctl/pkg/container"
 	"github.com/Br0ce/containerctl/pkg/file"
@@ -233,6 +237,111 @@ func (cli *Client) FilesIn(ctx context.Context, root file.Info) ([]file.Info, er
 	}
 
 	return cli.filesIn(ctx, root)
+}
+
+func (cli *Client) findShell(ctx context.Context, id string) (string, error) {
+	for _, shell := range []string{"/bin/sh", "/bin/bash", "/bin/ash"} {
+		_, err := cli.client.ContainerStatPath(ctx, id, shell)
+		if err == nil {
+			return shell, nil
+		}
+	}
+	return "", fmt.Errorf("no shell found in container %s: tried /bin/sh, /bin/bash, /bin/ash", id)
+}
+
+// Terminal opens an interactive shell session inside the container identified by id.
+// It creates a Docker exec process, attaches stdin/stdout/stderr with a PTY, and
+// bridges in/out to the exec connection. The call blocks until the shell exits.
+func (cli *Client) Terminal(ctx context.Context, id string, in io.Reader, out io.Writer) error {
+	shell, err := cli.findShell(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Seed the initial PTY dimensions from the current terminal; or fallback to 80x24
+	cols, rows, err := term.GetSize(int(os.Stdout.Fd())) //nolint:gosec // G115: os.Stdout.Fd() returns a small non-negative file descriptor that always fits in int
+	if err != nil {
+		cols, rows = 80, 24
+	}
+
+	opts := dcont.ExecOptions{
+		Cmd:          []string{shell},
+		AttachStdin:  true,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          true,
+		ConsoleSize:  &[2]uint{uint(rows), uint(cols)},
+	}
+	execID, err := cli.client.ContainerExecCreate(ctx, id, opts)
+	if err != nil {
+		return fmt.Errorf("create exec: %w", err)
+	}
+
+	// Attach to the exec instance to obtain a bidirectional connection to the shell.
+	resp, err := cli.client.ContainerExecAttach(ctx, execID.ID, dcont.ExecStartOptions{
+		Tty: true,
+	})
+	if err != nil {
+		return fmt.Errorf("attach to exec: %w", err)
+	}
+	defer resp.Close()
+
+	// Switch the local terminal to raw mode so keystrokes are forwarded as-is
+	// to the shell rather than being processed by the local line discipline.
+	//nolint:gosec // G115: os.Stdin.Fd() returns a small non-negative file descriptor that always fits in int
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("raw mode: %w", err)
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState) //nolint:gosec // G115: same as above
+
+	resizeCtx, resizeCancel := context.WithCancel(ctx)
+	defer resizeCancel()
+
+	// Listen for SIGWINCH and forward terminal resize events to the container's PTY.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGWINCH)
+	defer signal.Stop(sigCh)
+
+	go func() {
+		for {
+			select {
+			case <-sigCh:
+				//nolint:gosec // G115: os.Stdout.Fd() returns a small non-negative file descriptor that always fits in int
+				w, h, err := term.GetSize(int(os.Stdout.Fd()))
+				if err != nil {
+					// Terminal size unavailable; skip this resize event and wait for the next SIGWINCH.
+					continue
+				}
+				err = cli.client.ContainerExecResize(resizeCtx, execID.ID, dcont.ResizeOptions{
+					//nolint:gosec // G115: terminal width returned by term.GetSize is always positive, safe to convert to uint
+					Width: uint(w),
+					//nolint:gosec // G115: terminal height returned by term.GetSize is always positive, safe to convert to uint
+					Height: uint(h),
+				})
+				if err != nil {
+					// Resize is best-effort if we don't want to tearing down the session.
+					continue
+				}
+			case <-resizeCtx.Done():
+				return
+			}
+		}
+	}()
+
+	// Pump stdin into the exec connection in a separate goroutine so it does not
+	// block the main goroutine that drains stdout/stderr below.
+	go func() {
+		//nolint:gosec // G104: error intentionally ignored; copy ends when the shell exits or the connection closes,
+		// both are expected termination paths
+		io.Copy(resp.Conn, in)
+		//nolint:gosec // G104: error intentionally ignored
+		resp.CloseWrite()
+	}()
+
+	// Stream shell output to out; returns when the shell exits and the connection is closed.
+	_, err = io.Copy(out, resp.Reader)
+	return err
 }
 
 func (cli *Client) DaemonHost() string {
