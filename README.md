@@ -35,7 +35,7 @@ Download the binary for your platform from the [releases page](https://github.co
 ### macOS (Apple Silicon)
 
 ```sh
-VERSION=v0.3.0  # replace with the desired version
+VERSION=v0.5.0  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
 
 # Verify the checksum against the value published on the releases page
@@ -49,7 +49,7 @@ containerctl --version
 ### Linux (amd64)
 
 ```sh
-VERSION=v0.3.0  # replace with the desired version
+VERSION=v0.5.0  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
 
 # Verify the checksum against the value published on the releases page
