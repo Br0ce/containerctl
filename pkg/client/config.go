@@ -132,9 +132,7 @@ func (cfg *Config) DockerHost() string {
 }
 
 // openIdentityFile tries to open the identity file from the given filename
-// or if filename is empty, the ~/.ssh/config is parsed and cfg.host, cfg.username and cfg.identityFile
-// is rewritten.
-// If ~/.ssh/config is not present, the default ones in the ~/.ssh directory are used,
+// or if filename is empty the default ones in the ~/.ssh directory are used,
 // e.g., id_ed25519, id_rsa, and id_ecdsa.
 //
 // In either case, the file must be inside the ~/.ssh directory. Any file outside of it will not
@@ -143,62 +141,13 @@ func (cfg *Config) DockerHost() string {
 // The caller is responsible for closing the file.
 //
 // It returns an error if the file cannot be opened or if the filename is outside of the ~/.ssh directory.
-func (cfg *Config) OpenIdentityFile() (*os.File, error) {
+func (cfg *Config) openIdentityFile() (*os.File, error) {
 	// If an identity file is provided, use it.
 	if cfg.identityFile != "" {
 		return os.OpenInRoot(cfg.sshDir, filepath.Base(cfg.identityFile))
 	}
 
-	// If no identity file provided, use ~.ssh/config and rewrite the host, username,
-	// and identity file from the config.
-	file, err := os.OpenInRoot(cfg.sshDir, "config")
-	if err != nil {
-		return nil, fmt.Errorf("open ssh config: %w", err)
-	}
-
-	sshCfg, err := ssh_config.Decode(file)
-	if err != nil {
-		return nil, fmt.Errorf("decode ssh config: %w", err)
-	}
-
-	host := cfg.host
-
-	// Rewrite the host, username, and identity file from the config if present.
-	hostCfg, err := sshCfg.Get(host, "HostName")
-	if err != nil {
-		return nil, fmt.Errorf("get ssh config for HostName %s: %w", cfg.Addr(), err)
-	}
-	if hostCfg != "" {
-		cfg.host = hostCfg
-	}
-
-	portCfg, err := sshCfg.Get(host, "Port")
-	if err != nil {
-		return nil, fmt.Errorf("get ssh config for Port %s: %w", cfg.Addr(), err)
-	}
-	if portCfg != "" {
-		cfg.port = portCfg
-	}
-
-	userCfg, err := sshCfg.Get(host, "User")
-	if err != nil {
-		return nil, fmt.Errorf("get ssh config for User %s: %w", cfg.Addr(), err)
-	}
-	if userCfg != "" {
-		cfg.username = userCfg
-	}
-
-	identityFileCfg, err := sshCfg.Get(host, "IdentityFile")
-	if err != nil {
-		return nil, fmt.Errorf("get ssh config for IdentityFile %s: %w", cfg.Addr(), err)
-	}
-	if identityFileCfg != "" {
-		cfg.identityFile = identityFileCfg
-		// We found the identity file in the ssh config, try to open it.
-		return os.OpenInRoot(cfg.sshDir, cfg.identityFile)
-	}
-
-	// We have not found the identity file sofar, try the defaults.
+	// We have not found the identity file so far, try the defaults.
 	var errs error
 	for _, f := range []string{"id_ed25519", "id_rsa", "id_ecdsa"} {
 		idFile, err := os.OpenInRoot(cfg.sshDir, f)
@@ -209,4 +158,51 @@ func (cfg *Config) OpenIdentityFile() (*os.File, error) {
 	}
 
 	return nil, fmt.Errorf("open identity file: %w", errs)
+}
+
+// rewriteFromSSHConfig rewrites the host, username, port and identity file from the given ssh
+// config file if present.
+//
+// It returns an error if the file cannot be read or parsed.
+func (cfg *Config) rewriteFromSSHConfig(file *os.File) error {
+	sshCfg, err := ssh_config.Decode(file)
+	if err != nil {
+		return fmt.Errorf("decode ssh config: %w", err)
+	}
+
+	host := cfg.host
+
+	hostCfg, err := sshCfg.Get(host, "HostName")
+	if err != nil {
+		return fmt.Errorf("get ssh config for HostName %s: %w", cfg.Addr(), err)
+	}
+	if hostCfg != "" {
+		cfg.host = hostCfg
+	}
+
+	portCfg, err := sshCfg.Get(host, "Port")
+	if err != nil {
+		return fmt.Errorf("get ssh config for Port %s: %w", cfg.Addr(), err)
+	}
+	if portCfg != "" {
+		cfg.port = portCfg
+	}
+
+	userCfg, err := sshCfg.Get(host, "User")
+	if err != nil {
+		return fmt.Errorf("get ssh config for User %s: %w", cfg.Addr(), err)
+	}
+	if userCfg != "" {
+		cfg.username = userCfg
+	}
+
+	if cfg.identityFile == "" {
+		identityFileCfg, err := sshCfg.Get(host, "IdentityFile")
+		if err != nil {
+			return fmt.Errorf("get ssh config for IdentityFile %s: %w", cfg.Addr(), err)
+		}
+		cfg.identityFile = identityFileCfg
+	}
+
+	return nil
 }

@@ -1,74 +1,108 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
+	"os"
 	"path/filepath"
 	"syscall"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
 )
 
-// NewSSHClient creates a new SSH client for the given host, username, and identity file.
+// NewSSHClient creates a new SSH client from the given config.
 //
-// The host can be in the format of "example.com", "user@example.com:22", or any valid
-// combination of username, hostname, and port. If the port is not specified, it defaults to 22.
+// Settings from ~/.ssh/config are applied first, overriding any values in cfg.
+// Host keys are verified against ~/.ssh/known_hosts.
 //
-// If a ~/.ssh/config file is present and contains an entry matching host, username, port or identity file,
-// the values from the config will override the corresponding values provided by the command line arguments.
-//
-// If a username is provided, the client will use password authentication. If the username is
-// provided in both the host string and the argument, it will return an error.
-//
-// If no username is provided, it will try to use an identity file for authentication.
-//
-// If the identity file is provided, it will be used. Any identity file outside of ~/.ssh will
-// not be accepted for security reasons.
-// Otherwise, the default identity files in the .ssh directory will be tried,
-// e.g., id_ed25519, id_rsa, and id_ecdsa.
-//
-// In either case, the client will check the host key against the known_hosts file in the ~/.ssh directory.
+// Authentication is attempted in order:
+//  1. Password prompt, if cfg.AskPassword() is true.
+//  2. SSH agent via SSH_AUTH_SOCK, if the socket is available and has signers.
+//  3. Identity file (defaults: id_ed25519, id_rsa, id_ecdsa); prompts for passphrase if needed.
 func NewSSHClient(cfg *Config) (*ssh.Client, error) {
 	callback, err := knownhosts.New(filepath.Join(cfg.SSHDir(), "known_hosts"))
 	if err != nil {
 		return nil, fmt.Errorf("get host key callback: %w", err)
 	}
 
-	authMethod, err := getAuthMethod(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("get auth method: %w", err)
+	// Apply ~/.ssh/config overrides before any auth decisions.
+	cfgFile, err := os.OpenInRoot(cfg.sshDir, "config")
+	if err == nil {
+		defer cfgFile.Close()
+		if err := cfg.rewriteFromSSHConfig(cfgFile); err != nil {
+			return nil, fmt.Errorf("rewrite from ssh config: %w", err)
+		}
 	}
 
-	sshCfg := &ssh.ClientConfig{
+	baseCfg := ssh.ClientConfig{
 		HostKeyCallback: callback,
 		User:            cfg.Username(),
-		Auth:            authMethod,
 	}
 
-	return ssh.Dial("tcp", cfg.Addr(), sshCfg)
+	if cfg.AskPassword() {
+		return cfg.sshClientFromPassword(baseCfg)
+	}
+
+	// Try agent auth if SSH_AUTH_SOCK is available.
+	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
+		client, err := cfg.sshClientFromAgent(sock, baseCfg)
+		if err == nil {
+			return client, nil
+		}
+	}
+
+	// Fall back to key file auth.
+	return cfg.sshClientFromKeyFile(baseCfg)
 }
 
-func getAuthMethod(cfg *Config) ([]ssh.AuthMethod, error) {
-	if cfg.AskPassword() {
-		callback := func() (secret string, err error) {
-			fmt.Print("Enter password: ")
+// sshClientFromPassword creates an SSH client using password authentication.
+func (cfg *Config) sshClientFromPassword(cc ssh.ClientConfig) (*ssh.Client, error) {
+	callback := func() (secret string, err error) {
+		fmt.Print("Enter password: ")
 
-			bytePassword, err := term.ReadPassword(syscall.Stdin)
-			if err != nil {
-				return "", fmt.Errorf("read password: %w", err)
-			}
-
-			return string(bytePassword), nil
+		bytePassword, err := term.ReadPassword(syscall.Stdin)
+		fmt.Println()
+		if err != nil {
+			return "", fmt.Errorf("read password: %w", err)
 		}
-		return []ssh.AuthMethod{
-			ssh.PasswordCallback(callback),
-		}, nil
+
+		return string(bytePassword), nil
+	}
+	cc.Auth = []ssh.AuthMethod{ssh.PasswordCallback(callback)}
+	return ssh.Dial("tcp", cfg.Addr(), &cc)
+}
+
+// sshClientFromAgent creates an SSH client using agent authentication with the given socket and client config.
+func (cfg *Config) sshClientFromAgent(sock string, cc ssh.ClientConfig) (*ssh.Client, error) {
+	//nolint:gosec // G704: SSH_AUTH_SOCK is a well-known env var pointing to a Unix socket, not a network resource
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		return nil, fmt.Errorf("dial ssh agent sock: %w", err)
+	}
+	defer conn.Close()
+
+	signers, err := agent.NewClient(conn).Signers()
+	if err != nil || len(signers) == 0 {
+		return nil, fmt.Errorf("no signers from agent")
 	}
 
-	// Try to open the identity file.
-	file, err := cfg.OpenIdentityFile()
+	cc.Auth = []ssh.AuthMethod{ssh.PublicKeys(signers...)}
+	client, err := ssh.Dial("tcp", cfg.Addr(), &cc)
+	if err != nil {
+		return nil, fmt.Errorf("dial ssh: %w", err)
+	}
+
+	return client, nil
+}
+
+// sshClientFromKeyFile creates an SSH client using key file authentication with the given client config.
+func (cfg *Config) sshClientFromKeyFile(cc ssh.ClientConfig) (*ssh.Client, error) {
+	file, err := cfg.openIdentityFile()
 	if err != nil {
 		return nil, fmt.Errorf("open identity file: %w", err)
 	}
@@ -81,10 +115,23 @@ func getAuthMethod(cfg *Config) ([]ssh.AuthMethod, error) {
 
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return nil, fmt.Errorf("parse private key: %w", err)
+		if !errors.As(err, new(*ssh.PassphraseMissingError)) {
+			return nil, fmt.Errorf("parse private key: %w", err)
+		}
+
+		fmt.Printf("Enter passphrase for key %s: ", file.Name())
+		passphrase, err := term.ReadPassword(syscall.Stdin)
+		fmt.Println()
+		if err != nil {
+			return nil, fmt.Errorf("read passphrase: %w", err)
+		}
+
+		signer, err = ssh.ParsePrivateKeyWithPassphrase(key, passphrase)
+		if err != nil {
+			return nil, fmt.Errorf("parse private key with passphrase: %w", err)
+		}
 	}
 
-	return []ssh.AuthMethod{
-		ssh.PublicKeys(signer),
-	}, nil
+	cc.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
+	return ssh.Dial("tcp", cfg.Addr(), &cc)
 }

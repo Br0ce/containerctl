@@ -28,6 +28,29 @@ The default view lists all containers on the connected host. Select a container 
 
 Press `Esc` from any sub-view to return to the container list, or `q` to quit.
 
+## SSH
+
+When `--host` is provided, containerctl connects to the remote Docker Engine API over SSH, tunneling all API calls through the connection. No manual SSH session is needed.
+
+The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its values take precedence over command-line arguments. Host keys are verified against `~/.ssh/known_hosts`. Authentication follows the same order as OpenSSH — password prompt, SSH agent (`SSH_AUTH_SOCK`), or a private key file, with a passphrase prompt if the key is encrypted.
+
+### Examples
+
+```bash
+  # Connect to local Docker
+  containerctl
+
+  # Connect to remote host using default SSH settings
+  containerctl --host my-host
+
+  # Connect to remote host using with SSH key
+  containerctl --host my-host:23 --identity-file ~/.ssh/id_rsa
+
+  # Connect to remote host with username embedded in host and password prompted
+  containerctl --host username@my-host --ask-password true
+```
+
+
 ## Install
 
 Download the binary for your platform from the [releases page](https://github.com/Br0ce/containerctl/releases).
@@ -35,7 +58,7 @@ Download the binary for your platform from the [releases page](https://github.co
 ### macOS (Apple Silicon)
 
 ```sh
-VERSION=v0.5.0  # replace with the desired version
+VERSION=v0.5.1  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
 
 # Verify the checksum against the value published on the releases page
@@ -49,7 +72,7 @@ containerctl --version
 ### Linux (amd64)
 
 ```sh
-VERSION=v0.5.0  # replace with the desired version
+VERSION=v0.5.1  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
 
 # Verify the checksum against the value published on the releases page
@@ -58,22 +81,6 @@ sha256sum containerctl-${VERSION}-linux-amd64
 chmod +x containerctl-${VERSION}-linux-amd64
 sudo mv containerctl-${VERSION}-linux-amd64 /usr/local/bin/containerctl
 containerctl --version
-```
-
-## Examples
-
-```bash
-  # Connect to local Docker
-  containerctl
-
-  # Connect to remote host using default SSH key from ~/.ssh/config
-  containerctl --host my-host
-
-  # Connect to remote host using with SSH key
-  containerctl --host my-host:23 --identity-file ~/.ssh/id_rsa
-
-  # Connect to remote host with username embedded in host and password prompted
-  containerctl --host username@my-host --ask-password true
 ```
 
 ---
