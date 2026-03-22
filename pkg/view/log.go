@@ -1,12 +1,11 @@
 package view
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 
-	"github.com/Br0ce/containerctl/pkg/client"
 	"github.com/Br0ce/containerctl/pkg/container"
 )
 
@@ -27,18 +26,18 @@ func NewLog() *Log {
 	}
 }
 
-func (view *Log) Populate(logs client.LogSeq, short container.Short) {
-	var sb strings.Builder
-	for line, err := range logs {
-		if err != nil {
-			sb.WriteString("[red]error: " + err.Error() + "[-]\n")
-			break
-		}
-		sb.WriteString(tview.TranslateANSI(line) + "\n")
-	}
-	view.SetText(sb.String())
-	view.ScrollToEnd()
+// InitSession clears the log view and sets the container context for InfoHeader.
+// Must be called from the main goroutine before streaming begins.
+func (view *Log) InitSession(short container.Short) {
 	view.curShort = &short
+	view.Clear()
+}
+
+// Populate appends a single log line to the view. To initiate a log session,
+// call InitSession first to set the container context and clear the text.
+func (view *Log) Populate(line string) {
+	fmt.Fprintf(view, "%s\n", tview.TranslateANSI(line))
+	view.ScrollToEnd()
 }
 
 func (view *Log) Name() string {

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -35,8 +36,9 @@ type UI struct {
 	log       *view.Log
 	body      *tview.Pages
 	rootPages *tview.Pages
-	errCh     chan error
 	shorts    []container.Short
+	errCh     chan error
+	cleanup   context.CancelFunc
 }
 
 // New initializes the UI components and returns a UI instance.
@@ -100,8 +102,9 @@ func New(cfg Config) (*UI, error) {
 		file:      files,
 		errModal:  errModal,
 		// Buffered channel to avoid blocking when publishing errors. Needs rework.
-		errCh: make(chan error, 1),
-		body:  body,
+		errCh:   make(chan error, 1),
+		body:    body,
+		cleanup: func() {},
 	}
 	header.SetKeyBindings(container.KeyBindings())
 	return ui, nil
@@ -228,16 +231,20 @@ func (ui *UI) inputCapture(ctx context.Context, cancel context.CancelFunc) {
 		switch event.Key() {
 		case tcell.KeyRune:
 			if event.Rune() == 'q' {
+				ui.cleanup()
 				cancel()
 				ui.app.Stop()
 				return nil
 			}
 		case tcell.KeyEscape:
+			ui.cleanup()
+
 			// If the error modal is front, let it handle Esc via its done func.
 			frontName, _ := ui.rootPages.GetFrontPage()
 			if frontName == ui.errModal.Name() {
 				return event
 			}
+
 			// Return to the container page from any view.
 			ui.body.SwitchToPage(ui.container.Name())
 			ui.header.SetKeyBindings(ui.container.KeyBindings())
@@ -310,11 +317,33 @@ func (ui *UI) handleLogs(ctx context.Context) {
 		return
 	}
 	id := ui.container.GetCell(row, 0).GetReference().(string)
-	ui.log.Populate(ui.cli.Logs(ctx, id), ui.shortByID(id))
+
+	ui.log.InitSession(ui.shortByID(id))
 	ui.body.SwitchToPage(ui.log.Name())
 	ui.header.SetKeyBindings(ui.log.KeyBindings())
 	ui.header.SetInfo(ui.log.InfoHeader())
 	ui.app.SetFocus(ui.log)
+
+	// Clean up any existing log stream before starting a new one.
+	ui.cleanup()
+	iter, cancelFn := ui.cli.Logs(ctx, id)
+	ui.cleanup = cancelFn
+
+	// Start a goroutine to read log lines and update the UI in the background.
+	// The goroutine will exit when the cancelFn is called, or when the context is cancelled.
+	go func() {
+		for line, err := range iter {
+			if err != nil {
+				if !errors.Is(err, context.Canceled) {
+					ui.publishError(err)
+				}
+				return
+			}
+			ui.app.QueueUpdateDraw(func() {
+				ui.log.Populate(line)
+			})
+		}
+	}()
 }
 
 func (ui *UI) handlePause(ctx context.Context) {
