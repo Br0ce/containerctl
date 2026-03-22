@@ -107,9 +107,16 @@ func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
 	return shorts, nil
 }
 
-func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
+func (cli *Client) Logs(ctx context.Context, id string) (LogSeq, context.CancelFunc) {
+	ctx, cancelFn := context.WithCancel(ctx)
 	return func(yield func(string, error) bool) {
-		rc, err := cli.client.ContainerLogs(ctx, id, dcont.LogsOptions{ShowStdout: true, ShowStderr: true})
+		defer cancelFn()
+		opts := dcont.LogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Follow:     true,
+		}
+		rc, err := cli.client.ContainerLogs(ctx, id, opts)
 		if err != nil {
 			yield("", fmt.Errorf("container logs: %w", err))
 			return
@@ -126,17 +133,17 @@ func (cli *Client) Logs(ctx context.Context, id string) LogSeq {
 		scanner := bufio.NewScanner(pr)
 		for scanner.Scan() {
 			if !yield(scanner.Text(), nil) {
-				err = pr.Close()
-				if err != nil {
-					fmt.Printf("close log stream: %v\n", err)
-				}
+				// nolint:gosec // G104: error intentionally ignored; closing the pipe will cause
+				// the StdCopy goroutine to exit, which is the intended behavior when the consumer
+				// stops consuming logs.
+				_ = pr.Close()
 				return
 			}
 		}
 		if err := scanner.Err(); err != nil {
 			yield("", err)
 		}
-	}
+	}, cancelFn
 }
 
 func (cli *Client) StartContainer(ctx context.Context, id string) error {
