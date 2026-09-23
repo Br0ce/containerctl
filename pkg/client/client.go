@@ -16,9 +16,9 @@ import (
 	"strings"
 	"syscall"
 
-	dcont "github.com/docker/docker/api/types/container"
-	dcli "github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	mcont "github.com/moby/moby/api/types/container"
+	mcli "github.com/moby/moby/client"
 	"golang.org/x/term"
 
 	"github.com/Br0ce/containerctl/pkg/container"
@@ -28,7 +28,7 @@ import (
 type LogSeq = iter.Seq2[string, error]
 
 type Client struct {
-	client          dcli.APIClient
+	client          mcli.APIClient
 	sshClientCloser io.Closer
 	daemonHost      string
 }
@@ -42,7 +42,7 @@ func New(cOpts ...ClientOptions) (*Client, error) {
 	client := &Client{}
 	client.daemonHost = cfg.host
 
-	opts := []dcli.Opt{dcli.FromEnv, dcli.WithAPIVersionNegotiation()}
+	opts := []mcli.Opt{mcli.FromEnv}
 	if client.daemonHost != "localhost" {
 		sshCli, err := NewSSHClient(cfg)
 		if err != nil {
@@ -54,10 +54,10 @@ func New(cOpts ...ClientOptions) (*Client, error) {
 		}
 
 		client.sshClientCloser = sshCli
-		opts = append(opts, dcli.WithDialContext(dialer))
+		opts = append(opts, mcli.WithDialContext(dialer))
 	}
 
-	cli, err := dcli.NewClientWithOpts(opts...)
+	cli, err := mcli.New(opts...)
 	if err != nil {
 		if client.sshClientCloser != nil {
 			err = errors.Join(err, client.sshClientCloser.Close())
@@ -78,13 +78,14 @@ func (cli *Client) Close() error {
 }
 
 func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
-	sums, err := cli.client.ContainerList(ctx, dcont.ListOptions{All: true, Latest: true})
+	res, err := cli.client.ContainerList(ctx, mcli.ContainerListOptions{All: true})
 	if err != nil {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
 
-	slices.SortFunc(sums, func(a, b dcont.Summary) int {
-		if a.State == dcont.StateRunning && b.State != dcont.StateRunning {
+	sums := res.Items
+	slices.SortFunc(sums, func(a, b mcont.Summary) int {
+		if a.State == mcont.StateRunning && b.State != mcont.StateRunning {
 			return -1
 		}
 		if a.State == b.State {
@@ -100,7 +101,7 @@ func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
 			Name:   sum.Names[0],
 			Image:  sum.Image,
 			Status: sum.Status,
-			State:  sum.State,
+			State:  string(sum.State),
 		})
 	}
 
@@ -111,7 +112,7 @@ func (cli *Client) Logs(ctx context.Context, id string) (LogSeq, context.CancelF
 	ctx, cancelFn := context.WithCancel(ctx)
 	return func(yield func(string, error) bool) {
 		defer cancelFn()
-		opts := dcont.LogsOptions{
+		opts := mcli.ContainerLogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
 			Follow:     true,
@@ -147,30 +148,34 @@ func (cli *Client) Logs(ctx context.Context, id string) (LogSeq, context.CancelF
 }
 
 func (cli *Client) StartContainer(ctx context.Context, id string) error {
-	return cli.client.ContainerStart(ctx, id, dcont.StartOptions{})
+	_, err := cli.client.ContainerStart(ctx, id, mcli.ContainerStartOptions{})
+	return err
 }
 
 func (cli *Client) StopContainer(ctx context.Context, id string) error {
-	return cli.client.ContainerStop(ctx, id, dcont.StopOptions{})
+	_, err := cli.client.ContainerStop(ctx, id, mcli.ContainerStopOptions{})
+	return err
 }
 
 func (cli *Client) PauseContainer(ctx context.Context, id string) error {
-	return cli.client.ContainerPause(ctx, id)
+	_, err := cli.client.ContainerPause(ctx, id, mcli.ContainerPauseOptions{})
+	return err
 }
 
 func (cli *Client) UnpauseContainer(ctx context.Context, id string) error {
-	return cli.client.ContainerUnpause(ctx, id)
+	_, err := cli.client.ContainerUnpause(ctx, id, mcli.ContainerUnpauseOptions{})
+	return err
 }
 
 func (cli *Client) filesIn(ctx context.Context, root file.Info) ([]file.Info, error) {
-	rc, _, err := cli.client.CopyFromContainer(ctx, root.ContainerID, root.Path)
+	res, err := cli.client.CopyFromContainer(ctx, root.ContainerID, mcli.CopyFromContainerOptions{SourcePath: root.Path})
 	if err != nil {
 		return nil, fmt.Errorf("copy from container: %w", err)
 	}
-	defer rc.Close()
+	defer res.Content.Close()
 
 	// The Tar stream contains the working directory as its first entry, followed by its contents in “deep-first” order.
-	tr := tar.NewReader(rc)
+	tr := tar.NewReader(res.Content)
 
 	// The first entry in the tar stream is the working directory, skip it.
 	start, err := tr.Next()
@@ -230,12 +235,12 @@ func (cli *Client) FilesIn(ctx context.Context, root file.Info) ([]file.Info, er
 	}
 
 	// Since path is empty, we try to get the working directory of the container and set it as root.Path.
-	info, err := cli.client.ContainerInspect(ctx, root.ContainerID)
+	info, err := cli.client.ContainerInspect(ctx, root.ContainerID, mcli.ContainerInspectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("inspect container %s: %w", root.ContainerID, err)
 	}
-	if info.Config != nil {
-		root.Path = info.Config.WorkingDir
+	if info.Container.Config != nil {
+		root.Path = info.Container.Config.WorkingDir
 	}
 
 	// If path is still not set, default to "/".
@@ -248,7 +253,7 @@ func (cli *Client) FilesIn(ctx context.Context, root file.Info) ([]file.Info, er
 
 func (cli *Client) findShell(ctx context.Context, id string) (string, error) {
 	for _, shell := range []string{"/bin/sh", "/bin/bash", "/bin/ash"} {
-		_, err := cli.client.ContainerStatPath(ctx, id, shell)
+		_, err := cli.client.ContainerStatPath(ctx, id, mcli.ContainerStatPathOptions{Path: shell})
 		if err == nil {
 			return shell, nil
 		}
@@ -271,22 +276,22 @@ func (cli *Client) Terminal(ctx context.Context, id string, in io.Reader, out io
 		cols, rows = 80, 24
 	}
 
-	opts := dcont.ExecOptions{
+	opts := mcli.ExecCreateOptions{
 		Cmd:          []string{shell},
 		AttachStdin:  true,
 		AttachStdout: true,
 		AttachStderr: true,
-		Tty:          true,
-		ConsoleSize:  &[2]uint{uint(rows), uint(cols)},
+		TTY:          true,
+		ConsoleSize:  mcli.ConsoleSize{Height: uint(rows), Width: uint(cols)},
 	}
-	execID, err := cli.client.ContainerExecCreate(ctx, id, opts)
+	execID, err := cli.client.ExecCreate(ctx, id, opts)
 	if err != nil {
 		return fmt.Errorf("create exec: %w", err)
 	}
 
 	// Attach to the exec instance to obtain a bidirectional connection to the shell.
-	resp, err := cli.client.ContainerExecAttach(ctx, execID.ID, dcont.ExecStartOptions{
-		Tty: true,
+	resp, err := cli.client.ExecAttach(ctx, execID.ID, mcli.ExecAttachOptions{
+		TTY: true,
 	})
 	if err != nil {
 		return fmt.Errorf("attach to exec: %w", err)
@@ -320,7 +325,7 @@ func (cli *Client) Terminal(ctx context.Context, id string, in io.Reader, out io
 					// Terminal size unavailable; skip this resize event and wait for the next SIGWINCH.
 					continue
 				}
-				err = cli.client.ContainerExecResize(resizeCtx, execID.ID, dcont.ResizeOptions{
+				_, err = cli.client.ExecResize(resizeCtx, execID.ID, mcli.ExecResizeOptions{
 					//nolint:gosec // G115: terminal width returned by term.GetSize is always positive, safe to convert to uint
 					Width: uint(w),
 					//nolint:gosec // G115: terminal height returned by term.GetSize is always positive, safe to convert to uint
