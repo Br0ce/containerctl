@@ -1,7 +1,6 @@
 ![Build Status](https://github.com/Br0ce/containerctl/actions/workflows/ci.yml/badge.svg)
 [![go.mod Go version](https://img.shields.io/github/go-mod/go-version/Br0ce/containerctl)](https://github.com/Br0ce/containerctl)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Br0ce/containerctl.svg)](https://pkg.go.dev/github.com/Br0ce/containerctl)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Br0ce/containerctl)](https://goreportcard.com/report/github.com/Br0ce/containerctl)
 
 
 # containerctl
@@ -58,7 +57,7 @@ Download the binary for your platform from the [releases page](https://github.co
 ### macOS (Apple Silicon)
 
 ```sh
-VERSION=v0.5.1  # replace with the desired version
+VERSION=v0.5.3  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
 
 # Verify the checksum against the value published on the releases page
@@ -72,7 +71,7 @@ containerctl --version
 ### Linux (amd64)
 
 ```sh
-VERSION=v0.5.1  # replace with the desired version
+VERSION=v0.5.3  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
 
 # Verify the checksum against the value published on the releases page
@@ -89,7 +88,7 @@ containerctl --version
 
 Requirements
 
-- Go 1.26+
+- Go 1.27+
 
 ```sh
 git clone https://github.com/Br0ce/containerctl.git
