@@ -20,17 +20,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: "1.27.x"
-          check-latest: true
-          cache: false
-
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.mod
+          cache: false
 
       - name: Build macOS arm64
         env:

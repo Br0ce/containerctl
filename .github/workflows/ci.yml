@@ -19,23 +19,22 @@ jobs:
 
     strategy:
       matrix:
-        go-version: [1.27.x]
         os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Install Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go-version }}
-          check-latest: true
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.mod
+          cache-dependency-path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.sum
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
       - name: Run golangci-lint
         run: make lint
 
@@ -49,21 +48,19 @@ jobs:
 
     strategy:
       matrix:
-        go-version: [1.27.x]
         os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Install Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go-version }}
-          check-latest: true
-          cache: false
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+      - name: Install Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.mod
+          cache: false
       - name: Test
         run: make test-race
