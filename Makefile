@@ -24,7 +24,7 @@ run:
 	go run ./cmd $(ARGS)
 
 build:
-	go build -o bin/containerctl ./cmd
+	go build -o bin/cctl ./cmd
 
 tidy:
 	go mod tidy

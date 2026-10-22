@@ -37,16 +37,16 @@ The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its 
 
 ```bash
   # Connect to local Docker
-  containerctl
+  cctl
 
   # Connect to remote host using default SSH settings
-  containerctl --host my-host
+  cctl --host my-host
 
   # Connect to remote host using with SSH key
-  containerctl --host my-host:23 --identity-file ~/.ssh/id_rsa
+  cctl --host my-host:23 --identity-file ~/.ssh/id_rsa
 
   # Connect to remote host with username embedded in host and password prompted
-  containerctl --host username@my-host --ask-password true
+  cctl --host username@my-host --ask-password true
 ```
 
 
@@ -64,8 +64,8 @@ curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/cont
 shasum -a 256 containerctl-${VERSION}-darwin-arm64
 
 chmod +x containerctl-${VERSION}-darwin-arm64
-sudo mv containerctl-${VERSION}-darwin-arm64 /usr/local/bin/containerctl
-containerctl --version
+sudo mv containerctl-${VERSION}-darwin-arm64 /usr/local/bin/cctl
+cctl --version
 ```
 
 ### Linux (amd64)
@@ -78,8 +78,8 @@ curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/cont
 sha256sum containerctl-${VERSION}-linux-amd64
 
 chmod +x containerctl-${VERSION}-linux-amd64
-sudo mv containerctl-${VERSION}-linux-amd64 /usr/local/bin/containerctl
-containerctl --version
+sudo mv containerctl-${VERSION}-linux-amd64 /usr/local/bin/cctl
+cctl --version
 ```
 
 ---
@@ -96,12 +96,12 @@ cd containerctl
 make build
 ```
 
-The binary will be placed at `./bin/containerctl`.
+The binary will be placed at `./bin/cctl`.
 
 ### Usage
 
 ```sh
-./bin/containerctl
+./bin/cctl
 # or
 make run
 ```
