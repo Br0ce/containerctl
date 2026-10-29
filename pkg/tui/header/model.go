@@ -20,6 +20,8 @@ type Model struct {
 	host, version          string
 	running, paused, total int
 	width                  int
+	// container, if set, is shown in the Info box instead of the counts.
+	container *container.Short
 }
 
 func New(host, version string) Model {
@@ -46,17 +48,39 @@ func (m Model) SetShorts(shorts []container.Short) Model {
 	return m
 }
 
+// SetContainer shows the name and image of s in the Info box instead of the
+// container counts.
+func (m Model) SetContainer(s container.Short) Model {
+	m.container = &s
+	return m
+}
+
+// ClearContainer shows the container counts in the Info box again.
+func (m Model) ClearContainer() Model {
+	m.container = nil
+	return m
+}
+
 func (m Model) View() string {
 	left := m.width / 2
 	docker := box("Docker Engine API", left,
 		field("Host:", 9, m.host),
 		field("Version:", 9, m.version),
 	)
-	info := box("Info", m.width-left,
+	return lipgloss.JoinHorizontal(lipgloss.Top, docker, m.info(m.width-left))
+}
+
+func (m Model) info(width int) string {
+	if m.container != nil {
+		return box("Info", width,
+			field("Name", 8, strings.TrimPrefix(m.container.Name, "/")),
+			field("Image", 8, m.container.Image),
+		)
+	}
+	return box("Info", width,
 		field("Running", 8, fmt.Sprintf("%-6d", m.running))+"  "+field("Paused", 7, fmt.Sprint(m.paused)),
 		field("Total", 8, fmt.Sprint(m.total)),
 	)
-	return lipgloss.JoinHorizontal(lipgloss.Top, docker, info)
 }
 
 func field(key string, keyWidth int, value string) string {

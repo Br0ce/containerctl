@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"context"
+	"errors"
+
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -8,15 +11,29 @@ import (
 
 	"github.com/Br0ce/containerctl/pkg/tui/containers"
 	"github.com/Br0ce/containerctl/pkg/tui/header"
+	"github.com/Br0ce/containerctl/pkg/tui/logs"
+)
+
+type page int
+
+const (
+	containersPage page = iota
+	logsPage
 )
 
 type Model struct {
 	cli           Client
 	err           error
 	width, height int
+	page          page
 	header        header.Model
 	help          help.Model
 	containers    containers.Model
+	logs          logs.Model
+	// logSession identifies the current log stream, so that lines still in
+	// flight from a previous stream are dropped.
+	logSession int
+	stopLogs   context.CancelFunc
 }
 
 func newModel(cli Client) Model {
@@ -27,6 +44,8 @@ func newModel(cli Client) Model {
 		header:     header.New(cli.DaemonHost(), cli.DaemonVersion()),
 		help:       h,
 		containers: containers.New(),
+		logs:       logs.New(),
+		stopLogs:   func() {},
 	}
 }
 
@@ -43,9 +62,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, quitKey):
+			m.stopLogs()
 			return m, tea.Quit
 		case key.Matches(msg, helpKey):
 			m.help.ShowAll = !m.help.ShowAll
+			return m.layout(), nil
+		case m.page == containersPage && key.Matches(msg, logsKey):
+			return m.openLogs()
+		case m.page == logsPage && key.Matches(msg, backKey):
+			m.stopLogs()
+			m.page = containersPage
+			m.header = m.header.ClearContainer()
 			return m.layout(), nil
 		}
 
@@ -61,31 +88,76 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Schedule the next refresh only once this one is done, so fetches
 		// never overlap on slow connections.
 		return m, tick()
+
+	case logsMsg:
+		if msg.session != m.logSession {
+			return m, nil
+		}
+		m.logs = m.logs.Append(msg.lines...)
+		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
+			m.logs = m.logs.Append("Error: " + msg.err.Error())
+		}
+		if msg.done {
+			return m, nil
+		}
+		return m, waitForLogs(msg.session, msg.stream)
 	}
 
 	var cmd tea.Cmd
-	m.containers, cmd = m.containers.Update(msg)
+	switch m.page {
+	case containersPage:
+		m.containers, cmd = m.containers.Update(msg)
+	case logsPage:
+		m.logs, cmd = m.logs.Update(msg)
+	}
 	return m, cmd
 }
 
-// layout gives the containers pane the space left over by the header and the
-// footer, whose height depends on whether the full help is shown.
+// openLogs switches to the logs page and starts streaming the logs of the
+// selected container, stopping any previous stream.
+func (m Model) openLogs() (Model, tea.Cmd) {
+	s, ok := m.containers.Selected()
+	if !ok {
+		return m, nil
+	}
+	m.stopLogs()
+	m.logSession++
+	var cmd tea.Cmd
+	cmd, m.stopLogs = streamLogs(m.cli, m.logSession, s.ID)
+	m.logs = m.logs.Start()
+	m.header = m.header.SetContainer(s)
+	m.page = logsPage
+	return m.layout(), cmd
+}
+
+// layout gives the active pane the space left over by the header and the
+// footer, whose height depends on the page and on whether the full help is
+// shown.
 func (m Model) layout() Model {
 	m.header = m.header.SetWidth(m.width)
 	m.help.SetWidth(m.width)
-	footerH := lipgloss.Height(m.footer())
-	m.containers = m.containers.SetSize(m.width, max(m.height-header.Height-footerH, 0))
+	bodyH := max(m.height-header.Height-lipgloss.Height(m.footer()), 0)
+	m.containers = m.containers.SetSize(m.width, bodyH)
+	m.logs = m.logs.SetSize(m.width, bodyH)
 	return m
 }
 
 func (m Model) footer() string {
-	return m.help.View(keyMap{table: m.containers.KeyMap()})
+	if m.page == logsPage {
+		return m.help.View(logsKeyMap{logs: m.logs.KeyMap()})
+	}
+	return m.help.View(containersKeyMap{table: m.containers.KeyMap()})
 }
 
 func (m Model) View() tea.View {
-	content := m.containers.View()
-	if m.err != nil {
+	var content string
+	switch {
+	case m.page == logsPage:
+		content = m.logs.View()
+	case m.err != nil:
 		content = "Error: " + m.err.Error()
+	default:
+		content = m.containers.View()
 	}
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, m.header.View(), content, m.footer()))
 	v.AltScreen = true
