@@ -12,6 +12,7 @@ import (
 
 	"github.com/Br0ce/containerctl/pkg/client"
 	"github.com/Br0ce/containerctl/pkg/container"
+	"github.com/Br0ce/containerctl/pkg/file"
 )
 
 type fakeClient struct {
@@ -20,6 +21,10 @@ type fakeClient struct {
 	logs    []string
 	logsErr error
 	logsCtx context.Context
+	// files maps a directory path to its listing; "" is the working
+	// directory.
+	files    map[string][]file.Info
+	filesErr error
 }
 
 func (f *fakeClient) AllShorts(ctx context.Context) ([]container.Short, error) {
@@ -45,6 +50,16 @@ func (f *fakeClient) Logs(ctx context.Context, _ string) (client.LogSeq, context
 			yield("", f.logsErr)
 		}
 	}, func() {}
+}
+
+func (f *fakeClient) FilesIn(ctx context.Context, root file.Info) ([]file.Info, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return nil, errors.New("expected a deadline on the request context")
+	}
+	if root.ContainerID != shorts[0].ID {
+		return nil, errors.New("unexpected container " + root.ContainerID)
+	}
+	return f.files[root.Path], f.filesErr
 }
 
 func (f *fakeClient) DaemonHost() string    { return "unix:///var/run/docker.sock" }
@@ -227,5 +242,126 @@ func TestLogsKeyIgnoredOnLogsPage(t *testing.T) {
 	m, _ = update(m, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	if m.logSession != session {
 		t.Error("'l' on the logs page must not start a new stream")
+	}
+}
+
+var workdir = []file.Info{
+	{Name: "..", Path: "/", IsDir: true, ContainerID: shorts[0].ID, DisplayName: "/app"},
+	{Name: "static", Path: "/app/static", IsDir: true, ContainerID: shorts[0].ID, DisplayName: "/app"},
+	{Name: "main.go", Path: "/app/main.go", ContainerID: shorts[0].ID, DisplayName: "/app", Size: 2048},
+}
+
+var static = []file.Info{
+	{Name: "..", Path: "/app", IsDir: true, ContainerID: shorts[0].ID, DisplayName: "/app/static"},
+	{Name: "index.html", Path: "/app/static/index.html", ContainerID: shorts[0].ID, DisplayName: "/app/static", Size: 12},
+}
+
+func newFilesClient() *fakeClient {
+	return &fakeClient{shorts: shorts, files: map[string][]file.Info{"": workdir, "/app/static": static}}
+}
+
+// openFiles loads the containers, presses f on the selected one and delivers
+// the listing.
+func openFiles(t *testing.T, cli *fakeClient) Model {
+	t.Helper()
+	m := newModel(cli)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m, _ = update(m, m.Init()())
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'f', Text: "f"})
+	if m.page != filesPage {
+		t.Fatal("expected files page after 'f'")
+	}
+	if cmd == nil {
+		t.Fatal("expected files command")
+	}
+	m, _ = update(m, cmd())
+	return m
+}
+
+func TestOpenFilesListsWorkdir(t *testing.T) {
+	m := openFiles(t, newFilesClient())
+	got := ansi.Strip(m.View().Content)
+	for _, want := range []string{"/app", "Name    web", "static", "main.go", "2.0 KB", "open dir", "esc"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("view does not contain %q: %q", want, got)
+		}
+	}
+	if h := lipgloss.Height(got); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+}
+
+func TestOpenDir(t *testing.T) {
+	m := openFiles(t, newFilesClient())
+	enter := tea.KeyPressMsg{Code: tea.KeyEnter}
+
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go
+	if m, cmd := update(m, enter); cmd != nil || m.filesSession != 1 {
+		t.Error("enter on a file must not fetch")
+	}
+
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyUp}) // static
+	m, cmd := update(m, enter)
+	if cmd == nil {
+		t.Fatal("expected files command")
+	}
+	if !strings.Contains(ansi.Strip(m.View().Content), "main.go") {
+		t.Error("current listing must stay until the new one arrives")
+	}
+	m, _ = update(m, cmd())
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "/app/static") || !strings.Contains(got, "index.html") || strings.Contains(got, "main.go") {
+		t.Errorf("expected the listing of /app/static: %q", got)
+	}
+	if f, _ := m.files.Selected(); f.Name != ".." {
+		t.Errorf("selected = %q, want the cursor reset to ..", f.Name)
+	}
+}
+
+func TestFilesError(t *testing.T) {
+	cli := newFilesClient()
+	m := openFiles(t, cli)
+
+	cli.filesErr = errors.New("boom")
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // static
+	m, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	m, _ = update(m, cmd())
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "Error: boom") || !strings.Contains(got, "main.go") {
+		t.Errorf("expected the error below the kept listing: %q", got)
+	}
+	if h := lipgloss.Height(got); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+}
+
+func TestFilesBack(t *testing.T) {
+	m := openFiles(t, newFilesClient())
+
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // static
+	m, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.page != containersPage {
+		t.Error("expected containers page after esc")
+	}
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "Containers") || !strings.Contains(got, "Total") {
+		t.Errorf("containers pane and counts not shown: %q", got)
+	}
+
+	// The listing requested before esc arrives late and must be dropped.
+	m, _ = update(m, cmd())
+	if strings.Contains(ansi.Strip(m.files.View()), "index.html") {
+		t.Error("stale listing was applied")
+	}
+}
+
+func TestFilesKeyIgnoredOnFilesPage(t *testing.T) {
+	m := openFiles(t, newFilesClient())
+	session := m.filesSession
+	m, _ = update(m, tea.KeyPressMsg{Code: 'f', Text: "f"})
+	if m.filesSession != session {
+		t.Error("'f' on the files page must not start a new request")
 	}
 }

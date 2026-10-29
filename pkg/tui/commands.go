@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Br0ce/containerctl/pkg/container"
+	"github.com/Br0ce/containerctl/pkg/file"
 )
 
 const (
@@ -35,6 +36,25 @@ func fetchContainers(cli Client) tea.Cmd {
 
 		shorts, err := cli.AllShorts(ctx)
 		return containersMsg{shorts: shorts, err: err}
+	}
+}
+
+// filesMsg carries the listing of directory root. session identifies the
+// request, so that listings arriving after the user moved on are dropped.
+type filesMsg struct {
+	session int
+	root    file.Info
+	files   []file.Info
+	err     error
+}
+
+func fetchFiles(cli Client, session int, root file.Info) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+
+		files, err := cli.FilesIn(ctx, root)
+		return filesMsg{session: session, root: root, files: files, err: err}
 	}
 }
 

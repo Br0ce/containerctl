@@ -58,6 +58,20 @@ func StateCell(state string) string {
 		ansi.Style{}.ForegroundColor(nil).String()
 }
 
+// DirCell marks a directory name in bold. Like StateCell, it resets only the
+// bold attribute (SGR 22), so the selected row keeps its colors; a colored
+// name would vanish on the accent background.
+func DirCell(name string) string {
+	return ansi.Style{}.Bold().String() + name + ansi.Style{}.Normal().String()
+}
+
+// FileCell dims a file name so that directories stand out. Faint is used
+// instead of a color for the same reason as in DirCell, and resets the same
+// way.
+func FileCell(name string) string {
+	return ansi.Style{}.Faint().String() + name + ansi.Style{}.Normal().String()
+}
+
 func stateColor(state string) color.Color {
 	switch state {
 	case "running":
