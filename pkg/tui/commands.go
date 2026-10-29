@@ -2,9 +2,13 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/muesli/cancelreader"
 
 	"github.com/Br0ce/containerctl/pkg/container"
 	"github.com/Br0ce/containerctl/pkg/file"
@@ -56,6 +60,69 @@ func fetchFiles(cli Client, session int, root file.Info) tea.Cmd {
 		files, err := cli.FilesIn(ctx, root)
 		return filesMsg{session: session, root: root, files: files, err: err}
 	}
+}
+
+// terminalMsg reports the end of a shell session.
+type terminalMsg struct {
+	err error
+}
+
+// openTerminal hands the terminal to a shell in container id. The program is
+// paused until the shell exits.
+func openTerminal(cli Client, id string) tea.Cmd {
+	return tea.Exec(&terminalCmd{cli: cli, id: id}, func(err error) tea.Msg {
+		return terminalMsg{err: err}
+	})
+}
+
+// terminalCmd runs client.Terminal as a tea.ExecCommand.
+type terminalCmd struct {
+	cli Client
+	id  string
+	in  io.Reader
+	out io.Writer
+}
+
+func (c *terminalCmd) SetStdin(r io.Reader)  { c.in = r }
+func (c *terminalCmd) SetStdout(w io.Writer) { c.out = w }
+
+// SetStderr is a no-op: the shell runs in a TTY, which merges stderr into
+// stdout.
+func (c *terminalCmd) SetStderr(io.Writer) {}
+
+// Run blocks until the shell exits. client.Terminal keeps reading its input
+// after that, which would swallow the first key pressed back in the TUI, so
+// the input is canceled once Run returns.
+func (c *terminalCmd) Run() error {
+	cr, err := cancelreader.NewReader(c.in)
+	if err != nil {
+		return fmt.Errorf("terminal input: %w", err)
+	}
+	in := &stdin{CancelReader: cr}
+	defer in.stop()
+	return c.cli.Terminal(context.Background(), c.id, in, c.out)
+}
+
+// stdin closes a CancelReader only once no read is in flight anymore, so a
+// read still waiting on the input never touches closed file descriptors.
+type stdin struct {
+	cancelreader.CancelReader
+	mu sync.RWMutex
+}
+
+func (s *stdin) Read(p []byte) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.CancelReader.Read(p)
+}
+
+// stop cancels the input and closes it after the pending read, which
+// returns right away once canceled. Later reads fail without blocking.
+func (s *stdin) stop() {
+	s.Cancel()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.Close()
 }
 
 // maxLogBatch bounds the lines delivered by one logsMsg, so a burst of output

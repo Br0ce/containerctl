@@ -68,6 +68,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.layout(), nil
 
 	case tea.KeyPressMsg:
+		// An error from the last shell session is shown until the next key.
+		m.containers = m.containers.SetErr(nil)
 		switch {
 		case key.Matches(msg, quitKey):
 			m.stopLogs()
@@ -79,6 +81,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.openLogs()
 		case m.page == containersPage && key.Matches(msg, filesKey):
 			return m.openFiles()
+		case m.page == containersPage && key.Matches(msg, termKey):
+			if s, ok := m.containers.Selected(); ok {
+				return m, openTerminal(m.cli, s.ID)
+			}
+			return m, nil
 		case m.page == filesPage && key.Matches(msg, openKey):
 			return m.openDir()
 		case m.page != containersPage && key.Matches(msg, backKey):
@@ -114,6 +121,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, waitForLogs(msg.session, msg.stream)
+
+	case terminalMsg:
+		m.containers = m.containers.SetErr(msg.err)
+		return m, nil
 
 	case filesMsg:
 		if msg.session != m.filesSession {

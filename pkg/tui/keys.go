@@ -12,6 +12,7 @@ var (
 	helpKey  = key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help"))
 	logsKey  = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "logs"))
 	filesKey = key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "files"))
+	termKey  = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "terminal"))
 	openKey  = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open dir"))
 	backKey  = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
 )
@@ -23,7 +24,7 @@ type containersKeyMap struct {
 }
 
 func (k containersKeyMap) ShortHelp() []key.Binding {
-	return append(k.table.ShortHelp(), logsKey, filesKey, quitKey, helpKey)
+	return append(k.table.ShortHelp(), logsKey, filesKey, termKey, quitKey, helpKey)
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
@@ -31,6 +32,7 @@ func (k containersKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{quitKey, helpKey},
 		{logsKey, filesKey},
+		{termKey},
 		{k.table.LineUp, k.table.LineDown},
 		{k.table.GotoTop, k.table.GotoBottom},
 		{k.table.PageUp, k.table.PageDown},

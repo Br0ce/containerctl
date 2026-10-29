@@ -30,7 +30,9 @@ var columns = []table.Column{
 type Model struct {
 	table  table.Model
 	shorts []container.Short
+	err    error
 	width  int
+	innerH int
 }
 
 func New() Model {
@@ -61,7 +63,6 @@ func keyMap() table.KeyMap {
 // SetSize sets the outer size of the pane, including its border.
 func (m Model) SetSize(w, h int) Model {
 	innerW := max(w-theme.BoxFrameWidth, 0)
-	innerH := max(h-theme.BoxFrameHeight, 0)
 
 	cols := make([]table.Column, len(columns))
 	copy(cols, columns)
@@ -71,9 +72,25 @@ func (m Model) SetSize(w, h int) Model {
 
 	m.table.SetColumns(cols)
 	m.table.SetWidth(innerW)
-	m.table.SetHeight(innerH)
 	m.width = w
+	m.innerH = max(h-theme.BoxFrameHeight, 0)
+	return m.fitTable()
+}
+
+// fitTable leaves room for the error line below the table.
+func (m Model) fitTable() Model {
+	h := m.innerH
+	if m.err != nil {
+		h = max(h-1, 0)
+	}
+	m.table.SetHeight(h)
 	return m
+}
+
+// SetErr shows err below the table, or hides the error line if err is nil.
+func (m Model) SetErr(err error) Model {
+	m.err = err
+	return m.fitTable()
 }
 
 // SetShorts replaces the rows and keeps the cursor on the same container
@@ -119,7 +136,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	return theme.Box("Containers", m.width, m.table.View())
+	content := m.table.View()
+	if m.err != nil {
+		content += "\n" + "Error: " + m.err.Error()
+	}
+	return theme.Box("Containers", m.width, content)
 }
 
 func shortID(id string) string {

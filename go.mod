@@ -11,6 +11,7 @@ require (
 	github.com/kevinburke/ssh_config v1.6.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
+	github.com/muesli/cancelreader v0.2.2
 	github.com/rivo/tview v0.42.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.58.0
@@ -40,7 +41,6 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect

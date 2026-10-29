@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -25,6 +27,8 @@ type fakeClient struct {
 	// directory.
 	files    map[string][]file.Info
 	filesErr error
+	// terminal, if set, runs in place of the shell session.
+	terminal func(id string, in io.Reader, out io.Writer) error
 }
 
 func (f *fakeClient) AllShorts(ctx context.Context) ([]container.Short, error) {
@@ -60,6 +64,10 @@ func (f *fakeClient) FilesIn(ctx context.Context, root file.Info) ([]file.Info, 
 		return nil, errors.New("unexpected container " + root.ContainerID)
 	}
 	return f.files[root.Path], f.filesErr
+}
+
+func (f *fakeClient) Terminal(_ context.Context, id string, in io.Reader, out io.Writer) error {
+	return f.terminal(id, in, out)
 }
 
 func (f *fakeClient) DaemonHost() string    { return "unix:///var/run/docker.sock" }
@@ -363,5 +371,90 @@ func TestFilesKeyIgnoredOnFilesPage(t *testing.T) {
 	m, _ = update(m, tea.KeyPressMsg{Code: 'f', Text: "f"})
 	if m.filesSession != session {
 		t.Error("'f' on the files page must not start a new request")
+	}
+}
+
+func TestTerminalKey(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m, _ = update(m, m.Init()())
+	if _, cmd := update(m, tea.KeyPressMsg{Code: 't', Text: "t"}); cmd == nil {
+		t.Error("expected terminal command on the containers page")
+	}
+
+	m, _ = openLogs(t, &fakeClient{shorts: shorts})
+	if _, cmd := update(m, tea.KeyPressMsg{Code: 't', Text: "t"}); cmd != nil {
+		t.Error("'t' on the logs page must not open a terminal")
+	}
+	m = openFiles(t, newFilesClient())
+	if _, cmd := update(m, tea.KeyPressMsg{Code: 't', Text: "t"}); cmd != nil {
+		t.Error("'t' on the files page must not open a terminal")
+	}
+}
+
+func TestTerminalError(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m, _ = update(m, m.Init()())
+
+	m, _ = update(m, terminalMsg{err: errors.New("no shell found")})
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "Error: no shell found") || !strings.Contains(got, "nginx") {
+		t.Errorf("expected the error below the containers: %q", got)
+	}
+	if h := lipgloss.Height(got); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if strings.Contains(m.View().Content, "no shell found") {
+		t.Error("error not cleared by the next key")
+	}
+}
+
+// TestTerminalCmdStopsInput checks that the input handed to the shell stops
+// reading once the session ends, like the input copy in client.Terminal
+// that outlives the shell.
+func TestTerminalCmdStopsInput(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	read := make(chan string, 1)
+	cli := &fakeClient{terminal: func(id string, in io.Reader, out io.Writer) error {
+		if id != shorts[0].ID {
+			return errors.New("unexpected container " + id)
+		}
+		go func() {
+			b, _ := io.ReadAll(in) // returns once the input is canceled
+			read <- string(b)
+		}()
+		_, err := io.WriteString(out, "$ ")
+		return err
+	}}
+
+	var out strings.Builder
+	c := &terminalCmd{cli: cli, id: shorts[0].ID}
+	c.SetStdin(r)
+	c.SetStdout(&out)
+	if err := c.Run(); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if out.String() != "$ " {
+		t.Errorf("output = %q, want the shell output", out.String())
+	}
+
+	if _, err := w.WriteString("x"); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-read; got != "" {
+		t.Errorf("shell read %q after it exited", got)
+	}
+	b := make([]byte, 1)
+	if _, err := r.Read(b); err != nil || b[0] != 'x' {
+		t.Errorf("key after the session = %q, %v; want it left for the TUI", b, err)
 	}
 }
