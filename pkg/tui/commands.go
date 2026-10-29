@@ -9,8 +9,19 @@ import (
 	"github.com/Br0ce/containerctl/pkg/container"
 )
 
-// requestTimeout bounds every client call made by a command.
-const requestTimeout = 10 * time.Second
+const (
+	// requestTimeout bounds every client call made by a command.
+	requestTimeout = 10 * time.Second
+	// refreshInterval is the pause between the end of one container fetch
+	// and the start of the next.
+	refreshInterval = 3 * time.Second
+)
+
+type tickMsg struct{}
+
+func tick() tea.Cmd {
+	return tea.Tick(refreshInterval, func(time.Time) tea.Msg { return tickMsg{} })
+}
 
 type containersMsg struct {
 	shorts []container.Short

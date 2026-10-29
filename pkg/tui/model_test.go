@@ -63,3 +63,27 @@ func TestQuit(t *testing.T) {
 		t.Error("expected tea.QuitMsg")
 	}
 }
+
+func TestContainersMsgSchedulesTick(t *testing.T) {
+	m := newModel(&fakeClient{})
+	for _, msg := range []containersMsg{{shorts: shorts}, {err: errors.New("boom")}} {
+		if _, cmd := update(m, msg); cmd == nil {
+			t.Errorf("expected tick command after %+v", msg)
+		}
+	}
+}
+
+func TestTickFetchesContainers(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	_, cmd := update(m, tickMsg{})
+	if cmd == nil {
+		t.Fatal("expected fetch command")
+	}
+	msg, ok := cmd().(containersMsg)
+	if !ok {
+		t.Fatalf("expected containersMsg, got %T", msg)
+	}
+	if len(msg.shorts) != len(shorts) {
+		t.Errorf("got %d shorts, want %d", len(msg.shorts), len(shorts))
+	}
+}

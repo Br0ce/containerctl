@@ -8,14 +8,21 @@ import (
 	"github.com/Br0ce/containerctl/pkg/container"
 )
 
-// columns are the table columns. The width of the last column is computed
-// on resize so that it fills the remaining space.
+// Widths of the fixed columns. NAME and IMAGE share the remaining space on
+// resize but never shrink below minFlexWidth.
+const (
+	idWidth      = 12
+	statusWidth  = 20
+	stateWidth   = 10
+	minFlexWidth = 12
+)
+
 var columns = []table.Column{
-	{Title: "ID", Width: 12},
-	{Title: "NAME", Width: 24},
-	{Title: "IMAGE", Width: 32},
-	{Title: "STATUS", Width: 20},
-	{Title: "STATE", Width: 10},
+	{Title: "ID", Width: idWidth},
+	{Title: "NAME", Width: minFlexWidth},
+	{Title: "IMAGE", Width: minFlexWidth},
+	{Title: "STATUS", Width: statusWidth},
+	{Title: "STATE", Width: stateWidth},
 }
 
 // Model is the containers pane. It holds no client and performs no I/O.
@@ -56,12 +63,9 @@ func (m Model) SetSize(w, h int) Model {
 
 	cols := make([]table.Column, len(columns))
 	copy(cols, columns)
-	used := 0
-	for _, c := range cols[:len(cols)-1] {
-		used += c.Width + cellStyle.GetHorizontalPadding()
-	}
-	last := &cols[len(cols)-1]
-	last.Width = max(innerW-used-cellStyle.GetHorizontalPadding(), last.Width)
+	flex := innerW - idWidth - statusWidth - stateWidth - len(cols)*cellStyle.GetHorizontalPadding()
+	cols[1].Width = max(flex/2, minFlexWidth)
+	cols[2].Width = max(flex-flex/2, minFlexWidth)
 
 	m.table.SetColumns(cols)
 	m.table.SetWidth(innerW)

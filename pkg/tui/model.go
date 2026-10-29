@@ -34,12 +34,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
+	case tickMsg:
+		return m, fetchContainers(m.cli)
+
 	case containersMsg:
 		m.err = msg.err
 		if msg.err == nil {
 			m.containers = m.containers.SetShorts(msg.shorts)
 		}
-		return m, nil
+		// Schedule the next refresh only once this one is done, so fetches
+		// never overlap on slow connections.
+		return m, tick()
 	}
 
 	var cmd tea.Cmd
