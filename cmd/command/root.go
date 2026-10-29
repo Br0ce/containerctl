@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Br0ce/containerctl/pkg/ui"
+	"github.com/Br0ce/containerctl/pkg/tui"
 	"github.com/Br0ce/containerctl/pkg/version"
 )
 
@@ -66,14 +66,14 @@ Examples:
   containerctl --host username@my-host --ask-password true
   `,
 		Run: func(cmd *cobra.Command, args []string) {
-			cfg := ui.Config{
+			cfg := tui.Config{
 				Host:         host,
 				DockerHost:   dockerhost,
 				Username:     username,
 				IdentityFile: identityFile,
 				AskPassword:  askPassword,
 			}
-			ui, err := ui.New(cfg)
+			ui, err := tui.New(cfg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: create ui %s\n", err.Error())
 				os.Exit(1)
