@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Br0ce/containerctl/pkg/container"
+	"github.com/Br0ce/containerctl/pkg/tui/theme"
 )
 
 // Widths of the fixed columns. NAME and IMAGE share the remaining space on
@@ -29,6 +30,7 @@ var columns = []table.Column{
 type Model struct {
 	table  table.Model
 	shorts []container.Short
+	width  int
 }
 
 func New() Model {
@@ -37,9 +39,9 @@ func New() Model {
 		table.WithFocused(true),
 		table.WithKeyMap(keyMap()),
 		table.WithStyles(table.Styles{
-			Header:   headerStyle,
-			Cell:     cellStyle,
-			Selected: selectedStyle,
+			Header:   theme.Header,
+			Cell:     theme.Cell,
+			Selected: theme.Selected,
 		}),
 	)
 	return Model{table: t}
@@ -58,18 +60,19 @@ func keyMap() table.KeyMap {
 
 // SetSize sets the outer size of the pane, including its border.
 func (m Model) SetSize(w, h int) Model {
-	innerW := max(w-paneStyle.GetHorizontalFrameSize(), 0)
-	innerH := max(h-paneStyle.GetVerticalFrameSize(), 0)
+	innerW := max(w-theme.BoxFrameWidth, 0)
+	innerH := max(h-theme.BoxFrameHeight, 0)
 
 	cols := make([]table.Column, len(columns))
 	copy(cols, columns)
-	flex := innerW - idWidth - statusWidth - stateWidth - len(cols)*cellStyle.GetHorizontalPadding()
+	flex := innerW - idWidth - statusWidth - stateWidth - len(cols)*theme.Cell.GetHorizontalPadding()
 	cols[1].Width = max(flex/2, minFlexWidth)
 	cols[2].Width = max(flex-flex/2, minFlexWidth)
 
 	m.table.SetColumns(cols)
 	m.table.SetWidth(innerW)
 	m.table.SetHeight(innerH)
+	m.width = w
 	return m
 }
 
@@ -84,7 +87,7 @@ func (m Model) SetShorts(shorts []container.Short) Model {
 	rows := make([]table.Row, len(shorts))
 	cursor := 0
 	for i, s := range shorts {
-		rows[i] = table.Row{shortID(s.ID), s.Name, s.Image, s.Status, stateCell(s.State)}
+		rows[i] = table.Row{shortID(s.ID), s.Name, s.Image, s.Status, theme.StateCell(s.State)}
 		if s.ID == selID {
 			cursor = i
 		}
@@ -104,6 +107,11 @@ func (m Model) Selected() (container.Short, bool) {
 	return m.shorts[i], true
 }
 
+// KeyMap returns the pane's key bindings for the help footer.
+func (m Model) KeyMap() table.KeyMap {
+	return m.table.KeyMap
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.table, cmd = m.table.Update(msg)
@@ -111,7 +119,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	return paneStyle.Render(m.table.View())
+	return theme.Box("Containers", m.width, m.table.View())
 }
 
 func shortID(id string) string {

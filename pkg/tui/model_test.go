@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/Br0ce/containerctl/pkg/container"
 )
@@ -26,6 +27,9 @@ func (f *fakeClient) AllShorts(ctx context.Context) ([]container.Short, error) {
 var shorts = []container.Short{
 	{ID: "aaaaaaaaaaaaaaaa", Name: "web", Image: "nginx", Status: "Up", State: "running"},
 }
+
+func (f *fakeClient) DaemonHost() string    { return "unix:///var/run/docker.sock" }
+func (f *fakeClient) DaemonVersion() string { return "1.47" }
 
 func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	updated, cmd := m.Update(msg)
@@ -85,5 +89,32 @@ func TestTickFetchesContainers(t *testing.T) {
 	}
 	if len(msg.shorts) != len(shorts) {
 		t.Errorf("got %d shorts, want %d", len(msg.shorts), len(shorts))
+	}
+}
+
+func TestHelpToggle(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m, _ = update(m, m.Init()())
+
+	got := m.View().Content
+	if !strings.Contains(got, "go to start") {
+		t.Fatalf("full help expected by default: %q", got)
+	}
+	if h := lipgloss.Height(m.footer()); h != 2 {
+		t.Errorf("full help height = %d, want 2", h)
+	}
+	if h := lipgloss.Height(got); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+
+	m, _ = update(m, tea.KeyPressMsg{Code: '?', Text: "?"})
+	if got := m.View().Content; !strings.Contains(got, "toggle help") || strings.Contains(got, "go to start") {
+		t.Errorf("short help expected after '?': %q", got)
+	}
+
+	m, _ = update(m, tea.KeyPressMsg{Code: '?', Text: "?"})
+	if !strings.Contains(m.View().Content, "go to start") {
+		t.Error("full help not shown after second '?'")
 	}
 }
