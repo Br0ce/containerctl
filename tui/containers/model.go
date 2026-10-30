@@ -31,9 +31,9 @@ var columns = []table.Column{
 	{Title: "COMPOSE", Width: minFlexWidth},
 	{Title: "NAME", Width: minFlexWidth},
 	{Title: "IMAGE", Width: minFlexWidth},
-	{Title: "HEALTH", Width: healthWidth},
 	{Title: "STATUS", Width: statusWidth},
 	{Title: "AGE", Width: ageWidth},
+	{Title: "HEALTH", Width: healthWidth},
 	{Title: "PORTS", Width: minFlexWidth},
 }
 
@@ -189,7 +189,7 @@ func row(s container.Short) table.Row {
 			cells[i] = theme.Dim(c)
 		}
 	}
-	return append(table.Row{theme.StateCell(s.State)}, slices.Insert(cells, 4, health)...)
+	return append(table.Row{theme.StateCell(s.State)}, slices.Insert(cells, 6, health)...)
 }
 
 func shortID(id string) string {

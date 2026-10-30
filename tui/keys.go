@@ -33,14 +33,14 @@ type containersKeyMap struct {
 // ShortHelp leaves out the cursor keys, which are in the full help, so that
 // the toggle still fits in 120 columns.
 func (k containersKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{logsKey, filesKey, inspectKey, termKey, startKey, stopKey, pauseKey, unpauseKey, quitKey, helpKey}
+	return []key.Binding{logsKey, inspectKey, filesKey, termKey, startKey, stopKey, pauseKey, unpauseKey, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k containersKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{logsKey, filesKey},
-		{inspectKey, termKey},
+		{logsKey, inspectKey},
+		{filesKey, termKey},
 		{startKey, stopKey},
 		{pauseKey, unpauseKey},
 		{k.table.LineUp, k.table.LineDown},

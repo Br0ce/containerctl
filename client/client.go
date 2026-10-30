@@ -50,6 +50,8 @@ func New(cOpts ...ClientOptions) (*Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("dial host %s: %w", cfg.host, err)
 		}
+		// NewSSHClient resolves aliases from ~/.ssh/config into cfg.host.
+		client.daemonHost = "ssh://" + cfg.host
 
 		dialer := func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return sshCli.DialContext(ctx, "unix", cfg.DockerHost())

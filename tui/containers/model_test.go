@@ -102,8 +102,8 @@ func TestSelectionBarIntact(t *testing.T) {
 	}
 	row := strings.TrimSpace(ansi.Strip(selected))
 	fields := strings.Fields(row)
-	if fields[0] != "●" || !slices.Equal(fields[len(fields)-4:], []string{"✓", "Up", "2h", "8080→80"}) {
-		t.Errorf("selected row = %q, want it to start with the state dot and end with health, status, age and ports", row)
+	if fields[0] != "●" || !slices.Equal(fields[len(fields)-4:], []string{"Up", "2h", "✓", "8080→80"}) {
+		t.Errorf("selected row = %q, want it to start with the state dot and end with status, age, health and ports", row)
 	}
 }
 
@@ -219,7 +219,7 @@ func TestHealthMark(t *testing.T) {
 	}
 	for _, tt := range tests {
 		r := row(container.Short{ID: "a", Status: "Up", State: tt.state, Health: tt.health})
-		if got := ansi.Strip(r[5]); got != tt.want {
+		if got := ansi.Strip(r[7]); got != tt.want {
 			t.Errorf("%s/%q: health cell = %q, want %q", tt.state, tt.health, got, tt.want)
 		}
 	}
