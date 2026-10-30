@@ -1,4 +1,4 @@
-.PHONY: build format lint clean-test test test-v test-race clean run build tidy setup
+.PHONY: build format lint clean-test test test-v test-race clean run build tidy setup demo-up demo-down
 format:
 	go fmt ./...
 
@@ -33,3 +33,15 @@ tidy:
 setup:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 	go mod tidy
+
+demo-up:
+	docker compose -f docs/demo/compose.yaml up -d
+	docker compose -f docs/demo/compose.yaml pause worker
+	docker compose -f docs/demo/monitoring.yaml up -d
+	docker compose -f docs/demo/monitoring.yaml --profile manual create reporter
+	docker rm -f scratch >/dev/null 2>&1; docker run -d --name scratch busybox sleep infinity
+
+demo-down:
+	docker compose -f docs/demo/compose.yaml down
+	docker compose -f docs/demo/monitoring.yaml --profile manual down
+	docker rm -f scratch

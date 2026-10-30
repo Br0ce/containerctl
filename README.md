@@ -18,6 +18,8 @@ It sits as a thin layer between the [Bubble Tea](https://github.com/charmbracele
 
 ## TUI
 
+<img src="docs/img/containers.png" width="800" alt="cctl container list">
+
 The default view lists all containers on the connected host, with a colored dot showing each container's state. Select a container to:
 
 - **Logs** — follow its output in real time.

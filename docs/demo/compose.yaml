@@ -1,0 +1,100 @@
+# Demo containers for README screenshots: `make demo-up`, then `make demo-down`.
+# The services cover every state the container list shows: running, healthy,
+# unhealthy, paused (worker, paused by make demo-up) and exited.
+name: shop
+
+services:
+  web:
+    container_name: web
+    image: nginx:alpine
+    # Listen on 8080 so that host and container port match, like the others.
+    command: ["sh", "-c", "sed -i 's/80;/8080;/' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # 127.0.0.1, since localhost resolves to ::1 first and nginx only
+      # listens on IPv4 when the image's entrypoint scripts are skipped.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080"]
+      interval: 2s
+      retries: 3
+
+  api:
+    container_name: api
+    image: busybox
+    command: ["sh", "-c", "echo ok > /tmp/index.html; httpd -f -p 8081 -h /tmp"]
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081"]
+      interval: 2s
+      retries: 3
+
+  db:
+    container_name: db
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: example
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 2s
+      retries: 3
+
+  cache:
+    container_name: cache
+    image: redis:alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 3
+
+  queue:
+    container_name: queue
+    image: nats:alpine
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 2s
+      retries: 3
+
+  mail:
+    container_name: mail
+    image: axllent/mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/readyz"]
+      interval: 2s
+      retries: 3
+
+  worker:
+    container_name: worker
+    image: busybox
+    command: ["sh", "-c", "while true; do echo processing job; sleep 2; done"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 2s
+      retries: 3
+
+  search:
+    container_name: search
+    image: busybox
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "false"]
+      interval: 2s
+      retries: 3
+
+  migrate:
+    container_name: migrate
+    image: busybox
+    command: ["sh", "-c", "echo migrations applied"]
+    restart: "no"
+
+  backup:
+    container_name: backup
+    image: busybox
+    command: ["sh", "-c", "echo backup failed >&2; exit 1"]
+    restart: "no"

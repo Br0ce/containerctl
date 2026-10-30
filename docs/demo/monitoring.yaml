@@ -1,0 +1,101 @@
+# A second demo project that fills up the container list, started together
+# with compose.yaml by `make demo-up`. ingest turns unhealthy after 20s,
+# crashloop keeps restarting, and reporter is only created (by make demo-up),
+# never started.
+name: monitoring
+
+services:
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 2s
+      retries: 3
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 2s
+      retries: 3
+
+  alertmanager:
+    container_name: alertmanager
+    image: prom/alertmanager
+    ports:
+      - "9093:9093"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 2s
+      retries: 3
+
+  pushgateway:
+    container_name: pushgateway
+    image: prom/pushgateway
+    ports:
+      - "9091:9091"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/-/healthy"]
+      interval: 2s
+      retries: 3
+
+  statsd-exporter:
+    container_name: statsd-exporter
+    image: prom/statsd-exporter
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9102/metrics"]
+      interval: 2s
+      retries: 3
+
+  node-exporter:
+    container_name: node-exporter
+    image: prom/node-exporter
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9100/metrics"]
+      interval: 2s
+      retries: 3
+
+  blackbox:
+    container_name: blackbox
+    image: prom/blackbox-exporter
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9115/-/healthy"]
+      interval: 2s
+      retries: 3
+
+  tracing:
+    container_name: tracing
+    image: jaegertracing/all-in-one
+    ports:
+      - "16686:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:14269/"]
+      interval: 2s
+      retries: 3
+
+  ingest:
+    container_name: ingest
+    image: busybox
+    command: ["sh", "-c", "sleep 20; touch /tmp/down; sleep infinity"]
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test ! -f /tmp/down"]
+      interval: 2s
+      retries: 3
+
+  crashloop:
+    container_name: crashloop
+    image: busybox
+    command: ["sh", "-c", "echo starting; sleep 3; echo crashed >&2; exit 1"]
+    restart: always
+
+  reporter:
+    container_name: reporter
+    image: busybox
+    command: ["echo", "report sent"]
+    profiles: [manual]
