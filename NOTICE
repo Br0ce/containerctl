@@ -108,33 +108,45 @@ Other Third-Party Dependencies
 The following dependencies are used under their respective licenses (MIT, BSD,
 or Apache 2.0). Full license texts are available in the vendor/ directory.
 
-  github.com/Microsoft/go-winio          MIT     Copyright (c) 2015 Microsoft
-  github.com/cespare/xxhash/v2           MIT     Copyright (c) 2016 Caleb Spare
-  github.com/containerd/errdefs          Apache 2.0
-  github.com/containerd/errdefs/pkg      Apache 2.0
-  github.com/distribution/reference      Apache 2.0
-  github.com/docker/go-connections       Apache 2.0
-  github.com/docker/go-units             Apache 2.0
-  github.com/felixge/httpsnoop           MIT     Copyright (c) 2016 Felix Geisendörfer
-  github.com/gdamore/encoding            Apache 2.0
-  github.com/gdamore/tcell/v2            Apache 2.0
-  github.com/go-logr/logr                Apache 2.0
-  github.com/go-logr/stdr                Apache 2.0
-  github.com/inconshreveable/mousetrap   MIT     Copyright (c) 2013 Alan Shreve
-  github.com/lucasb-eyer/go-colorful     MIT     Copyright (c) 2013 Lucas Beyer
-  github.com/moby/docker-image-spec      Apache 2.0
-  github.com/opencontainers/go-digest    Apache 2.0
-  github.com/opencontainers/image-spec   Apache 2.0
-  github.com/rivo/tview                  MIT     Copyright (c) 2018 Oliver Kuederle
-  github.com/rivo/uniseg                 MIT     Copyright (c) 2019 Oliver Kuederle
-  github.com/spf13/cobra                 Apache 2.0
-  github.com/spf13/pflag                 BSD 3-Clause
-  go.opentelemetry.io/auto/sdk           Apache 2.0
-  go.opentelemetry.io/contrib/...        Apache 2.0
-  go.opentelemetry.io/otel               Apache 2.0
-  go.opentelemetry.io/otel/metric        Apache 2.0
-  go.opentelemetry.io/otel/trace         Apache 2.0
-  golang.org/x/crypto                    BSD 3-Clause  Copyright 2009 The Go Authors
-  golang.org/x/sys                       BSD 3-Clause  Copyright 2009 The Go Authors
-  golang.org/x/term                      BSD 3-Clause  Copyright 2009 The Go Authors
-  golang.org/x/text                      BSD 3-Clause  Copyright 2009 The Go Authors
+  charm.land/bubbles/v2                   MIT     Copyright (c) 2020-2026 Charmbracelet, Inc.
+  charm.land/bubbletea/v2                 MIT     Copyright (c) 2020-2026 Charmbracelet, Inc.
+  charm.land/lipgloss/v2                  MIT     Copyright (c) 2021-2026 Charmbracelet, Inc.
+  github.com/Microsoft/go-winio           MIT     Copyright (c) 2015 Microsoft
+  github.com/cespare/xxhash/v2            MIT     Copyright (c) 2016 Caleb Spare
+  github.com/charmbracelet/colorprofile   MIT     Copyright (c) 2020-2024 Charmbracelet, Inc.
+  github.com/charmbracelet/ultraviolet    MIT     Copyright (c) 2025 Charmbracelet, Inc.
+  github.com/charmbracelet/x/ansi         MIT     Copyright (c) 2023 Charmbracelet, Inc.
+  github.com/charmbracelet/x/term         MIT     Copyright (c) 2023 Charmbracelet, Inc.
+  github.com/charmbracelet/x/termios      MIT     Copyright (c) 2023 Charmbracelet, Inc.
+  github.com/charmbracelet/x/windows      MIT     Copyright (c) 2023 Charmbracelet, Inc.
+  github.com/clipperhouse/displaywidth    MIT     Copyright (c) 2025 Matt Sherman
+  github.com/clipperhouse/uax29/v2        MIT     Copyright (c) 2020 Matt Sherman
+  github.com/containerd/errdefs           Apache 2.0
+  github.com/containerd/errdefs/pkg       Apache 2.0
+  github.com/distribution/reference       Apache 2.0
+  github.com/docker/go-connections        Apache 2.0
+  github.com/docker/go-units              Apache 2.0
+  github.com/felixge/httpsnoop            MIT     Copyright (c) 2016 Felix Geisendörfer
+  github.com/go-logr/logr                 Apache 2.0
+  github.com/go-logr/stdr                 Apache 2.0
+  github.com/inconshreveable/mousetrap    MIT     Copyright (c) 2013 Alan Shreve
+  github.com/lucasb-eyer/go-colorful      MIT     Copyright (c) 2013 Lucas Beyer
+  github.com/mattn/go-runewidth           MIT     Copyright (c) 2016 Yasuhiro Matsumoto
+  github.com/moby/docker-image-spec       Apache 2.0
+  github.com/muesli/cancelreader          MIT     Copyright (c) 2022 Erik Geiser and Christian Muehlhaeuser
+  github.com/opencontainers/go-digest     Apache 2.0
+  github.com/opencontainers/image-spec    Apache 2.0
+  github.com/rivo/uniseg                  MIT     Copyright (c) 2019 Oliver Kuederle
+  github.com/spf13/cobra                  Apache 2.0
+  github.com/spf13/pflag                  BSD 3-Clause
+  github.com/xo/terminfo                  MIT     Copyright (c) 2016 Anmol Sethi
+  go.opentelemetry.io/auto/sdk            Apache 2.0
+  go.opentelemetry.io/contrib/...         Apache 2.0
+  go.opentelemetry.io/otel                Apache 2.0
+  go.opentelemetry.io/otel/log            Apache 2.0
+  go.opentelemetry.io/otel/metric         Apache 2.0
+  go.opentelemetry.io/otel/trace          Apache 2.0
+  golang.org/x/crypto                     BSD 3-Clause  Copyright 2009 The Go Authors
+  golang.org/x/sync                       BSD 3-Clause  Copyright 2009 The Go Authors
+  golang.org/x/sys                        BSD 3-Clause  Copyright 2009 The Go Authors
+  golang.org/x/term                       BSD 3-Clause  Copyright 2009 The Go Authors
