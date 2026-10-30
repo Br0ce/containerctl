@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/Br0ce/containerctl/container"
 	"github.com/Br0ce/containerctl/tui/theme"
@@ -52,13 +53,23 @@ func New() Model {
 		table.WithColumns(columns),
 		table.WithFocused(true),
 		table.WithKeyMap(keyMap()),
-		table.WithStyles(table.Styles{
-			Header:   theme.Header,
-			Cell:     theme.Cell,
-			Selected: theme.Selected,
-		}),
+		table.WithStyles(styles(theme.Header)),
 	)
 	return Model{table: t}
+}
+
+func styles(header lipgloss.Style) table.Styles {
+	return table.Styles{
+		Header:   header,
+		Cell:     theme.Cell,
+		Selected: theme.Selected,
+	}
+}
+
+// SetDark adapts the column headers to a dark or light terminal background.
+func (m Model) SetDark(dark bool) Model {
+	m.table.SetStyles(styles(theme.HeaderFor(dark)))
+	return m
 }
 
 // keyMap limits paging to keys that don't collide with container actions

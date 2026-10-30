@@ -12,6 +12,7 @@ import (
 var (
 	accent = lipgloss.Color("#1E90FF") // DodgerBlue
 	text   = lipgloss.Color("#C0C0C0") // Silver
+	ink    = lipgloss.Color("#1F2937") // Near-black
 
 	Title  = lipgloss.NewStyle().Bold(true).Foreground(accent)
 	Key    = lipgloss.NewStyle().Foreground(accent)
@@ -25,6 +26,17 @@ var (
 
 	box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent)
 )
+
+// HeaderFor returns the column header style for the terminal background:
+// silver on dark backgrounds and near-black on light ones, where the accent
+// looks noisy. Header itself is used until the terminal reports its
+// background, and on terminals that never do.
+func HeaderFor(dark bool) lipgloss.Style {
+	if dark {
+		return Header.Foreground(text)
+	}
+	return Header.Foreground(ink)
+}
 
 // BoxFrame is the number of columns and rows a Box adds around its content.
 const (

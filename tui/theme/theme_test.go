@@ -57,3 +57,12 @@ func TestHealthMark(t *testing.T) {
 		}
 	}
 }
+
+func TestHeaderFor(t *testing.T) {
+	if got := HeaderFor(false).GetForeground(); got != ink {
+		t.Errorf("light header = %v, want near-black %v", got, ink)
+	}
+	if got := HeaderFor(true).GetForeground(); got != text {
+		t.Errorf("dark header = %v, want silver %v", got, text)
+	}
+}

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"image/color"
 	"io"
 	"os"
 	"strings"
@@ -151,6 +152,28 @@ func TestInitLoadsContainers(t *testing.T) {
 	}
 	if s, ok := m.containers.Selected(); !ok || s.ID != shorts[0].ID {
 		t.Errorf("selected = %+v, want %s", s, shorts[0].ID)
+	}
+}
+
+func TestBackgroundColorStylesHeaders(t *testing.T) {
+	// The bold column header for ID; the header pane shows values in silver
+	// too, but not in bold.
+	const silver, blue, ink = "38;2;192;192;192;1mID", "38;2;30;144;255;1mID", "38;2;31;41;55;1mID"
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 10})
+	m = runInit(m)
+	if got := m.View().Content; !strings.Contains(got, blue) || strings.Contains(got, silver) {
+		t.Errorf("headers aren't blue before the background is known:\n%q", got)
+	}
+
+	m, _ = update(m, tea.BackgroundColorMsg{Color: color.Black})
+	if got := m.View().Content; !strings.Contains(got, silver) {
+		t.Errorf("headers aren't silver on a dark background:\n%q", got)
+	}
+
+	m, _ = update(m, tea.BackgroundColorMsg{Color: color.White})
+	if got := m.View().Content; !strings.Contains(got, ink) {
+		t.Errorf("headers aren't near-black on a light background:\n%q", got)
 	}
 }
 

@@ -28,13 +28,12 @@ type containersKeyMap struct {
 }
 
 func (k containersKeyMap) ShortHelp() []key.Binding {
-	return append(k.table.ShortHelp(), logsKey, filesKey, termKey, startKey, stopKey, pauseKey, unpauseKey, quitKey, helpKey)
+	return []key.Binding{logsKey, filesKey, termKey, startKey, stopKey, pauseKey, unpauseKey, k.table.LineUp, k.table.LineDown, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k containersKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{quitKey, helpKey},
 		{logsKey, filesKey},
 		{termKey},
 		{startKey, stopKey},
@@ -43,6 +42,7 @@ func (k containersKeyMap) FullHelp() [][]key.Binding {
 		{k.table.GotoTop, k.table.GotoBottom},
 		{k.table.PageUp, k.table.PageDown},
 		{k.table.HalfPageUp, k.table.HalfPageDown},
+		{quitKey, helpKey},
 	}
 }
 
@@ -53,19 +53,19 @@ type logsKeyMap struct {
 }
 
 func (k logsKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.logs.Up, k.logs.Down, backKey, quitKey, helpKey}
+	return []key.Binding{backKey, k.logs.Up, k.logs.Down, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k logsKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{quitKey, helpKey},
 		{backKey},
 		{k.logs.Up, k.logs.Down},
 		{k.logs.Top, k.logs.Bottom},
 		{k.logs.PageUp, k.logs.PageDown},
 		{k.logs.HalfPageUp, k.logs.HalfPageDown},
 		{k.logs.Left, k.logs.Right},
+		{quitKey, helpKey},
 	}
 }
 
@@ -76,17 +76,17 @@ type filesKeyMap struct {
 }
 
 func (k filesKeyMap) ShortHelp() []key.Binding {
-	return append(k.table.ShortHelp(), openKey, backKey, quitKey, helpKey)
+	return []key.Binding{openKey, backKey, k.table.LineUp, k.table.LineDown, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k filesKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{quitKey, helpKey},
 		{openKey, backKey},
 		{k.table.LineUp, k.table.LineDown},
 		{k.table.GotoTop, k.table.GotoBottom},
 		{k.table.PageUp, k.table.PageDown},
 		{k.table.HalfPageUp, k.table.HalfPageDown},
+		{quitKey, helpKey},
 	}
 }

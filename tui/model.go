@@ -58,7 +58,7 @@ func newModel(cli Client) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(fetchContainers(m.cli), fetchEngine(m.cli))
+	return tea.Batch(fetchContainers(m.cli), fetchEngine(m.cli), tea.RequestBackgroundColor)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -103,6 +103,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.header = m.header.ClearContainer()
 			return m.layout(), nil
 		}
+
+	case tea.BackgroundColorMsg:
+		m.containers = m.containers.SetDark(msg.IsDark())
+		m.files = m.files.SetDark(msg.IsDark())
+		return m, nil
 
 	case tickMsg:
 		return m, fetchContainers(m.cli)
