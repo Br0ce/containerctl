@@ -36,3 +36,33 @@ func TestRewriteFromSSHConfig(t *testing.T) {
 		t.Errorf("Username() = %q, want %q", got, want)
 	}
 }
+
+func TestLocalDockerHost(t *testing.T) {
+	tests := []struct {
+		host, want string
+	}{
+		{"/var/run/docker.sock", "unix:///var/run/docker.sock"},
+		{"unix:///run/user/1000/podman/podman.sock", "unix:///run/user/1000/podman/podman.sock"},
+		{"tcp://127.0.0.1:2375", "tcp://127.0.0.1:2375"},
+	}
+	for _, tt := range tests {
+		if got := localDockerHost(tt.host); got != tt.want {
+			t.Errorf("localDockerHost(%q) = %q, want %q", tt.host, got, tt.want)
+		}
+	}
+}
+
+func TestRemoteSocket(t *testing.T) {
+	tests := []struct {
+		host, want string
+	}{
+		{"", "/var/run/docker.sock"},
+		{"/run/podman/podman.sock", "/run/podman/podman.sock"},
+		{"unix:///run/podman/podman.sock", "/run/podman/podman.sock"},
+	}
+	for _, tt := range tests {
+		if got := remoteSocket(tt.host); got != tt.want {
+			t.Errorf("remoteSocket(%q) = %q, want %q", tt.host, got, tt.want)
+		}
+	}
+}

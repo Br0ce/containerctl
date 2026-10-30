@@ -1,4 +1,4 @@
-.PHONY: build format lint clean-test test test-v test-race clean run build tidy setup demo-up demo-down
+.PHONY: build format lint clean-test test test-v test-race clean run tidy setup demo-up demo-down
 format:
 	go fmt ./...
 
@@ -18,7 +18,7 @@ test-race:
 	$(MAKE) clean-test && go test -race ./... -short
 
 clean:
-	rm -f ./bin/
+	rm -f ./bin/*
 
 run:
 	go run ./cmd $(ARGS)

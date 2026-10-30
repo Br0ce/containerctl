@@ -57,13 +57,20 @@ The footer shows the keys available in the current view.
 
 When `--host` is provided, containerctl connects to the remote Docker Engine API over SSH, tunneling all API calls through the connection. No manual SSH session is needed.
 
-The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its values take precedence over command-line arguments. Host keys are verified against `~/.ssh/known_hosts`. Authentication follows the same order as OpenSSH — password prompt, SSH agent (`SSH_AUTH_SOCK`), or a private key file, with a passphrase prompt if the key is encrypted.
+The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its values take precedence over command-line arguments. Host keys are verified against `~/.ssh/known_hosts`. Authentication follows the same order as OpenSSH — password prompt, SSH agent (`SSH_AUTH_SOCK`), or a private key file, with a passphrase prompt if the key is encrypted. A key given with `--identity-file` must be inside `~/.ssh`.
+
+## Docker socket
+
+Locally, cctl connects to `--docker-host` if given, otherwise to `DOCKER_HOST`, otherwise to `unix:///var/run/docker.sock`. With `--host`, `--docker-host` names the socket on the remote host (default `/var/run/docker.sock`) and of the Docker environment variables only `DOCKER_API_VERSION` is used. This also lets you connect to Docker API-compatible engines such as Podman.
 
 ### Examples
 
 ```bash
   # Connect to local Docker
   cctl
+
+  # Connect to local Podman
+  cctl --docker-host unix:///run/user/1000/podman/podman.sock
 
   # Connect to remote host using default SSH settings
   cctl --host my-host
@@ -72,7 +79,7 @@ The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its 
   cctl --host my-host:23 --identity-file ~/.ssh/id_rsa
 
   # Connect to remote host with username embedded in host and password prompted
-  cctl --host username@my-host --ask-password true
+  cctl --host username@my-host --ask-password
 ```
 
 ## Install
@@ -82,7 +89,7 @@ Download the binary for your platform from the [releases page](https://github.co
 ### macOS (Apple Silicon)
 
 ```sh
-VERSION=v0.5.4  # replace with the desired version
+VERSION=v1.0.0-rc.1  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
 
 # Verify the checksum against the value published on the releases page
@@ -96,7 +103,7 @@ cctl --version
 ### Linux (amd64)
 
 ```sh
-VERSION=v0.5.4  # replace with the desired version
+VERSION=v1.0.0-rc.1  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
 
 # Verify the checksum against the value published on the releases page
@@ -152,6 +159,8 @@ Available make targets:
 | `format`       | Format code with `go fmt`            |
 | `tidy`         | Tidy and vendor dependencies         |
 | `clean`        | Remove build artifacts               |
+| `demo-up`      | Start the demo containers            |
+| `demo-down`    | Remove the demo containers           |
 
 ## License
 

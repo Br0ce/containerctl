@@ -29,6 +29,10 @@ import (
 
 type LogSeq = iter.Seq2[string, error]
 
+// defaultSocket is the Docker socket used on a remote host if no other is
+// given.
+const defaultSocket = "/var/run/docker.sock"
+
 type Client struct {
 	client          mcli.APIClient
 	sshClientCloser io.Closer
@@ -44,8 +48,14 @@ func New(cOpts ...ClientOptions) (*Client, error) {
 	client := &Client{}
 	client.daemonHost = cfg.host
 
-	opts := []mcli.Opt{mcli.FromEnv}
-	if client.daemonHost != "localhost" {
+	var opts []mcli.Opt
+	if client.daemonHost == "localhost" {
+		opts = append(opts, mcli.FromEnv)
+		// An explicit --docker-host takes precedence over DOCKER_HOST.
+		if cfg.DockerHost() != "" {
+			opts = append(opts, mcli.WithHost(localDockerHost(cfg.DockerHost())))
+		}
+	} else {
 		sshCli, err := NewSSHClient(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("dial host %s: %w", cfg.host, err)
@@ -54,11 +64,14 @@ func New(cOpts ...ClientOptions) (*Client, error) {
 		client.daemonHost = "ssh://" + cfg.host
 
 		dialer := func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return sshCli.DialContext(ctx, "unix", cfg.DockerHost())
+			return sshCli.DialContext(ctx, "unix", remoteSocket(cfg.DockerHost()))
 		}
 
 		client.sshClientCloser = sshCli
-		opts = append(opts, mcli.WithDialContext(dialer))
+		// DOCKER_HOST and the TLS variables describe a local setup and would
+		// break plain HTTP through the tunnel, so only the API version is
+		// taken from the environment.
+		opts = append(opts, mcli.WithAPIVersionFromEnv(), mcli.WithDialContext(dialer))
 	}
 
 	cli, err := mcli.New(opts...)
@@ -71,6 +84,24 @@ func New(cOpts ...ClientOptions) (*Client, error) {
 	client.client = cli
 
 	return client, nil
+}
+
+// localDockerHost turns a plain socket path into a unix:// URL and returns
+// any other host unchanged.
+func localDockerHost(host string) string {
+	if strings.HasPrefix(host, "/") {
+		return "unix://" + host
+	}
+	return host
+}
+
+// remoteSocket returns the path of the Docker socket on the remote host,
+// accepting both a plain path and a unix:// URL.
+func remoteSocket(host string) string {
+	if host == "" {
+		return defaultSocket
+	}
+	return strings.TrimPrefix(host, "unix://")
 }
 
 func (cli *Client) Close() error {

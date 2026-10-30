@@ -47,6 +47,7 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-darwin-arm64
             ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/bin/containerctl-${{ github.ref_name }}-linux-amd64

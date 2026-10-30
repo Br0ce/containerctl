@@ -29,10 +29,11 @@ func New(cfg Config) (*UI, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("host is required")
 	}
-	if cfg.DockerHost == "" {
-		return nil, fmt.Errorf("docker host is required")
+	opts := []client.ClientOptions{client.WithHost(cfg.Host)}
+
+	if cfg.DockerHost != "" {
+		opts = append(opts, client.WithDockerHost(cfg.DockerHost))
 	}
-	opts := []client.ClientOptions{client.WithHost(cfg.Host), client.WithDockerHost(cfg.DockerHost)}
 
 	if cfg.Username != "" {
 		opts = append(opts, client.WithUsername(cfg.Username))
