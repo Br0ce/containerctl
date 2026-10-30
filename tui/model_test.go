@@ -666,19 +666,104 @@ func TestActionKeyWithoutContainers(t *testing.T) {
 }
 
 func TestActionError(t *testing.T) {
+	cli := &fakeClient{shorts: shorts, actionErr: errors.New("Error response from daemon: permission denied")}
+	m := newModel(cli)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+
+	_, cmd := update(m, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	m, _ = update(m, cmd())
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "stop web: permission denied") || !strings.Contains(got, "nginx") {
+		t.Errorf("expected the error on the status line below the containers: %q", got)
+	}
+	if h := lipgloss.Height(m.View().Content); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+
+	// Navigating keeps the message; only its timer or the next action clears
+	// it.
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if !strings.Contains(m.View().Content, "permission denied") {
+		t.Error("error cleared by a navigation key")
+	}
+}
+
+func TestActionErrorTimeout(t *testing.T) {
 	m := newModel(&fakeClient{shorts: shorts})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
 	m = runInit(m)
 
-	m, _ = update(m, actionMsg{err: errors.New("container is not paused")})
-	got := ansi.Strip(m.View().Content)
-	if !strings.Contains(got, "Error: container is not paused") || !strings.Contains(got, "nginx") {
-		t.Errorf("expected the error below the containers: %q", got)
+	m, _ = update(m, actionMsg{verb: "stop", name: "web", err: context.DeadlineExceeded})
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "stop web: timed out") {
+		t.Errorf("expected a timeout on the status line: %q", got)
+	}
+}
+
+func TestActionErrorOnOtherPage(t *testing.T) {
+	m, _ := openLogs(t, &fakeClient{shorts: shorts})
+	m, _ = update(m, actionMsg{verb: "stop", name: "web", err: errors.New("permission denied")})
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "stop web: permission denied") {
+		t.Errorf("expected the error on the logs page: %q", got)
 	}
 
-	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
-	if strings.Contains(m.View().Content, "not paused") {
-		t.Error("error not cleared by the next key")
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "stop web: permission denied") {
+		t.Errorf("error lost when going back to the containers: %q", got)
+	}
+}
+
+func TestActionErrorFitsWidth(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 20})
+	m = runInit(m)
+
+	m, _ = update(m, actionMsg{verb: "stop", name: "web", err: errors.New(strings.Repeat("very long reason ", 10))})
+	for _, l := range strings.Split(m.View().Content, "\n") {
+		if w := lipgloss.Width(l); w > 40 {
+			t.Errorf("line width = %d, want <= 40: %q", w, l)
+		}
+	}
+	if h := lipgloss.Height(m.View().Content); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+}
+
+func TestActionErrorClears(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+
+	// The timers themselves aren't run, to keep the test fast; their
+	// messages carry the session of the message they were scheduled for.
+	m, cmd := update(m, actionMsg{verb: "stop", name: "web", err: errors.New("first")})
+	if cmd == nil {
+		t.Fatal("expected a timer to clear the status line")
+	}
+	first := clearStatusMsg{session: m.statusSession}
+	m, _ = update(m, actionMsg{verb: "start", name: "web", err: errors.New("second")})
+	second := clearStatusMsg{session: m.statusSession}
+
+	// The timer of the first message must not clear the second one.
+	m, _ = update(m, first)
+	if !strings.Contains(m.View().Content, "second") {
+		t.Error("newer message cleared by the timer of an older one")
+	}
+	m, _ = update(m, second)
+	if strings.Contains(m.View().Content, "second") {
+		t.Error("message not cleared by its timer")
+	}
+}
+
+func TestActionClearsStatus(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+
+	m, _ = update(m, actionMsg{verb: "stop", name: "web", err: errors.New("permission denied")})
+	m, _ = update(m, tea.KeyPressMsg{Code: 's', Text: "s"})
+	if strings.Contains(m.View().Content, "permission denied") {
+		t.Error("status line not cleared by the next action")
 	}
 }
 

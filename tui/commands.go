@@ -2,8 +2,10 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +27,8 @@ const (
 	// refreshInterval is the pause between the end of one container fetch
 	// and the start of the next.
 	refreshInterval = 3 * time.Second
+	// statusDuration is how long a message stays on the status line.
+	statusDuration = 5 * time.Second
 )
 
 type tickMsg struct{}
@@ -103,19 +107,43 @@ func fetchDetails(cli Client, session int, id string) tea.Cmd {
 }
 
 // actionMsg reports the end of a container action such as start or stop.
+// verb and name describe the action for the status line.
 type actionMsg struct {
-	err error
+	verb string
+	name string
+	err  error
 }
 
-// containerAction runs action on container id in the background. The
+// containerAction runs action on container s in the background. The
 // container list picks up the new state on its next refresh.
-func containerAction(action func(ctx context.Context, id string) error, id string) tea.Cmd {
+func containerAction(verb string, action func(ctx context.Context, id string) error, s container.Short) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), actionTimeout)
 		defer cancel()
 
-		return actionMsg{err: action(ctx, id)}
+		return actionMsg{verb: verb, name: s.Name, err: action(ctx, s.ID)}
 	}
+}
+
+// actionStatus renders a failed action as a short line, e.g.
+// "stop web: permission denied".
+func actionStatus(msg actionMsg) string {
+	reason := msg.err.Error()
+	if errors.Is(msg.err, context.DeadlineExceeded) {
+		reason = "timed out"
+	}
+	reason = strings.TrimPrefix(reason, "Error response from daemon: ")
+	return msg.verb + " " + msg.name + ": " + reason
+}
+
+// clearStatusMsg hides the status line, unless a newer message replaced the
+// one it was scheduled for.
+type clearStatusMsg struct {
+	session int
+}
+
+func clearStatus(session int) tea.Cmd {
+	return tea.Tick(statusDuration, func(time.Time) tea.Msg { return clearStatusMsg{session: session} })
 }
 
 // terminalMsg reports the end of a shell session.

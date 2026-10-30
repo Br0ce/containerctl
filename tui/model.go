@@ -19,6 +19,7 @@ import (
 	"github.com/Br0ce/containerctl/tui/inspect"
 	"github.com/Br0ce/containerctl/tui/logs"
 	"github.com/Br0ce/containerctl/tui/stats"
+	"github.com/Br0ce/containerctl/tui/theme"
 )
 
 type page int
@@ -62,6 +63,12 @@ type Model struct {
 	// removing is the container awaiting confirmation for removal; its ID
 	// is empty if no removal is pending.
 	removing container.Short
+	// status is a short message shown above the footer on every page, such
+	// as a failed container action; it is empty if nothing is shown.
+	// statusSession identifies the current message, so that the timer of
+	// an earlier one doesn't clear it.
+	status        string
+	statusSession int
 }
 
 func newModel(cli Client) Model {
@@ -117,15 +124,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case m.page == containersPage && key.Matches(msg, startKey):
-			return m, m.runAction(m.cli.StartContainer)
+			return m.runAction("start", m.cli.StartContainer)
 		case m.page == containersPage && key.Matches(msg, stopKey):
-			return m, m.runAction(m.cli.StopContainer)
+			return m.runAction("stop", m.cli.StopContainer)
 		case m.page == containersPage && key.Matches(msg, pauseKey):
-			return m, m.runAction(m.cli.PauseContainer)
+			return m.runAction("pause", m.cli.PauseContainer)
 		case m.page == containersPage && key.Matches(msg, unpauseKey):
-			return m, m.runAction(m.cli.UnpauseContainer)
+			return m.runAction("unpause", m.cli.UnpauseContainer)
 		case m.page == containersPage && key.Matches(msg, restartKey):
-			return m, m.runAction(m.cli.RestartContainer)
+			return m.runAction("restart", m.cli.RestartContainer)
 		case m.page == containersPage && key.Matches(msg, removeKey):
 			if s, ok := m.containers.Selected(); ok {
 				m.removing = s
@@ -207,10 +214,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case actionMsg:
-		if msg.err != nil {
-			m.containers = m.containers.SetErr(msg.err)
+		if msg.err == nil {
+			return m, nil
 		}
-		return m, nil
+		return m.setStatus(actionStatus(msg))
+
+	case clearStatusMsg:
+		if msg.session != m.statusSession {
+			return m, nil
+		}
+		m.status = ""
+		return m.layout(), nil
 
 	case filesMsg:
 		if msg.session != m.filesSession {
@@ -256,24 +270,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // runAction applies action to the selected container without waiting for it.
-func (m Model) runAction(action func(ctx context.Context, id string) error) tea.Cmd {
+// The status line is cleared, so that it only ever reports on the latest
+// action.
+func (m Model) runAction(verb string, action func(ctx context.Context, id string) error) (Model, tea.Cmd) {
 	s, ok := m.containers.Selected()
 	if !ok {
-		return nil
+		return m, nil
 	}
-	return containerAction(action, s.ID)
+	m = m.clearStatus()
+	return m, containerAction(verb, action, s)
+}
+
+// setStatus shows text on the status line for statusDuration.
+func (m Model) setStatus(text string) (Model, tea.Cmd) {
+	m.status = text
+	m.statusSession++
+	return m.layout(), clearStatus(m.statusSession)
+}
+
+// clearStatus hides the status line right away; the timer of the hidden
+// message is ignored.
+func (m Model) clearStatus() Model {
+	if m.status == "" {
+		return m
+	}
+	m.status = ""
+	m.statusSession++
+	return m.layout()
 }
 
 // confirmRemove ends a pending removal: y removes the container without
 // waiting for it, any other key cancels. The key is not passed on.
 func (m Model) confirmRemove(msg tea.KeyPressMsg) (Model, tea.Cmd) {
-	id := m.removing.ID
+	s := m.removing
 	m.removing = container.Short{}
 	m = m.layout()
 	if !key.Matches(msg, confirmKey) {
 		return m, nil
 	}
-	return m, containerAction(m.cli.RemoveContainer, id)
+	m = m.clearStatus()
+	return m, containerAction("remove", m.cli.RemoveContainer, s)
 }
 
 // openLogs switches to the logs page and starts streaming the logs of the
@@ -366,12 +402,16 @@ func (m Model) layout() Model {
 }
 
 // footer renders the help for the active page, or the confirmation prompt
-// while a removal is pending. Each line is cut to the window width, since
-// help lets items overflow when no ellipsis fits after the last one that
-// does.
+// while a removal is pending, below the status line if a message is shown.
+// Each line is cut to the window width, since help lets items overflow when
+// no ellipsis fits after the last one that does.
 func (m Model) footer() string {
+	var status string
+	if m.status != "" {
+		status = theme.Alert.Render(ansi.Truncate(m.status, m.width, "…")) + "\n"
+	}
 	if m.removing.ID != "" {
-		return ansi.Truncate("Remove container "+m.removing.Name+"? (y/N)", m.width, "…")
+		return status + ansi.Truncate("Remove container "+m.removing.Name+"? (y/N)", m.width, "…")
 	}
 	var keys help.KeyMap
 	switch m.page {
@@ -390,7 +430,7 @@ func (m Model) footer() string {
 	for i, l := range lines {
 		lines[i] = ansi.Truncate(l, m.width, "…")
 	}
-	return strings.Join(lines, "\n")
+	return status + strings.Join(lines, "\n")
 }
 
 func (m Model) View() tea.View {
