@@ -194,6 +194,18 @@ func (cli *Client) StopContainer(ctx context.Context, id string) error {
 	return err
 }
 
+func (cli *Client) RestartContainer(ctx context.Context, id string) error {
+	_, err := cli.client.ContainerRestart(ctx, id, mcli.ContainerRestartOptions{})
+	return err
+}
+
+// RemoveContainer removes a stopped container but keeps its volumes. The
+// daemon refuses to remove a running container.
+func (cli *Client) RemoveContainer(ctx context.Context, id string) error {
+	_, err := cli.client.ContainerRemove(ctx, id, mcli.ContainerRemoveOptions{})
+	return err
+}
+
 func (cli *Client) PauseContainer(ctx context.Context, id string) error {
 	_, err := cli.client.ContainerPause(ctx, id, mcli.ContainerPauseOptions{})
 	return err

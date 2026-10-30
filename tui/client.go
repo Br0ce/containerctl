@@ -19,6 +19,8 @@ type Client interface {
 	Terminal(ctx context.Context, id string, in io.Reader, out io.Writer) error
 	StartContainer(ctx context.Context, id string) error
 	StopContainer(ctx context.Context, id string) error
+	RestartContainer(ctx context.Context, id string) error
+	RemoveContainer(ctx context.Context, id string) error
 	PauseContainer(ctx context.Context, id string) error
 	UnpauseContainer(ctx context.Context, id string) error
 	Engine(ctx context.Context) (engine.Info, error)

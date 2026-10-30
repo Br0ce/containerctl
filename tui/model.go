@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Br0ce/containerctl/container"
 	"github.com/Br0ce/containerctl/file"
 	"github.com/Br0ce/containerctl/tui/containers"
 	"github.com/Br0ce/containerctl/tui/files"
@@ -51,6 +52,9 @@ type Model struct {
 	inspectSession int
 	// inspected is the ID of the container shown on the inspect page.
 	inspected string
+	// removing is the container awaiting confirmation for removal; its ID
+	// is empty if no removal is pending.
+	removing container.Short
 }
 
 func newModel(cli Client) Model {
@@ -79,6 +83,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		// An error from the last shell session is shown until the next key.
 		m.containers = m.containers.SetErr(nil)
+		if m.removing.ID != "" {
+			return m.confirmRemove(msg)
+		}
 		switch {
 		case key.Matches(msg, quitKey):
 			m.stopLogs()
@@ -105,6 +112,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.runAction(m.cli.PauseContainer)
 		case m.page == containersPage && key.Matches(msg, unpauseKey):
 			return m, m.runAction(m.cli.UnpauseContainer)
+		case m.page == containersPage && key.Matches(msg, restartKey):
+			return m, m.runAction(m.cli.RestartContainer)
+		case m.page == containersPage && key.Matches(msg, removeKey):
+			if s, ok := m.containers.Selected(); ok {
+				m.removing = s
+				return m.layout(), nil
+			}
+			return m, nil
 		case m.page == filesPage && key.Matches(msg, openKey):
 			return m.openDir()
 		case m.page == inspectPage && key.Matches(msg, refreshKey):
@@ -222,6 +237,18 @@ func (m Model) runAction(action func(ctx context.Context, id string) error) tea.
 	return containerAction(action, s.ID)
 }
 
+// confirmRemove ends a pending removal: y removes the container without
+// waiting for it, any other key cancels. The key is not passed on.
+func (m Model) confirmRemove(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	id := m.removing.ID
+	m.removing = container.Short{}
+	m = m.layout()
+	if !key.Matches(msg, confirmKey) {
+		return m, nil
+	}
+	return m, containerAction(m.cli.RemoveContainer, id)
+}
+
 // openLogs switches to the logs page and starts streaming the logs of the
 // selected container, stopping any previous stream.
 func (m Model) openLogs() (Model, tea.Cmd) {
@@ -293,10 +320,14 @@ func (m Model) layout() Model {
 	return m
 }
 
-// footer renders the help for the active page. Each line is cut to the
-// window width, since help lets items overflow when no ellipsis fits after
-// the last one that does.
+// footer renders the help for the active page, or the confirmation prompt
+// while a removal is pending. Each line is cut to the window width, since
+// help lets items overflow when no ellipsis fits after the last one that
+// does.
 func (m Model) footer() string {
+	if m.removing.ID != "" {
+		return ansi.Truncate("Remove container "+m.removing.Name+"? (y/N)", m.width, "…")
+	}
 	var keys help.KeyMap
 	switch m.page {
 	case logsPage:

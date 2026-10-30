@@ -106,6 +106,14 @@ func (f *fakeClient) StopContainer(ctx context.Context, id string) error {
 	return f.action(ctx, "stop", id)
 }
 
+func (f *fakeClient) RestartContainer(ctx context.Context, id string) error {
+	return f.action(ctx, "restart", id)
+}
+
+func (f *fakeClient) RemoveContainer(ctx context.Context, id string) error {
+	return f.action(ctx, "remove", id)
+}
+
 func (f *fakeClient) PauseContainer(ctx context.Context, id string) error {
 	return f.action(ctx, "pause", id)
 }
@@ -237,7 +245,7 @@ func TestHelpToggle(t *testing.T) {
 	m = runInit(m)
 
 	got := m.View().Content
-	if !strings.Contains(got, "toggle help") || strings.Contains(got, "go to start") {
+	if !strings.Contains(got, "restart") || strings.Contains(got, "go to start") {
 		t.Fatalf("short help expected by default: %q", got)
 	}
 	if h := lipgloss.Height(m.footer()); h != 1 {
@@ -542,6 +550,7 @@ func TestActionKeys(t *testing.T) {
 		{'x', "stop"},
 		{'p', "pause"},
 		{'u', "unpause"},
+		{'r', "restart"},
 	} {
 		cli := &fakeClient{shorts: shorts}
 		m := newModel(cli)
@@ -558,6 +567,63 @@ func TestActionKeys(t *testing.T) {
 		}
 		if want := tc.want + " " + shorts[0].ID; len(cli.actions) != 1 || cli.actions[0] != want {
 			t.Errorf("%q: actions = %v, want [%s]", tc.key, cli.actions, want)
+		}
+	}
+}
+
+func TestRemoveAsksFirst(t *testing.T) {
+	cli := &fakeClient{shorts: shorts}
+	m := newModel(cli)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'd', Text: "d"})
+	if cmd != nil {
+		t.Fatal("'d' must not remove before confirmation")
+	}
+	if got := m.View().Content; !strings.Contains(got, "Remove container web? (y/N)") {
+		t.Errorf("expected the confirmation prompt in the footer: %q", got)
+	}
+	if h := lipgloss.Height(m.View().Content); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+
+	m, cmd = update(m, tea.KeyPressMsg{Code: 'y', Text: "y"})
+	if cmd == nil {
+		t.Fatal("expected remove command after 'y'")
+	}
+	if msg, ok := cmd().(actionMsg); !ok || msg.err != nil {
+		t.Fatalf("got %+v, want actionMsg without error", msg)
+	}
+	if want := "remove " + shorts[0].ID; len(cli.actions) != 1 || cli.actions[0] != want {
+		t.Errorf("actions = %v, want [%s]", cli.actions, want)
+	}
+	if strings.Contains(m.View().Content, "Remove container") {
+		t.Error("prompt still shown after confirmation")
+	}
+}
+
+func TestRemoveCanceled(t *testing.T) {
+	for _, k := range []tea.KeyPressMsg{
+		{Code: 'n', Text: "n"},
+		{Code: tea.KeyEscape},
+		// Keys with a meaning of their own are swallowed by the prompt.
+		{Code: 'q', Text: "q"},
+		{Code: 'l', Text: "l"},
+		{Code: 's', Text: "s"},
+	} {
+		cli := &fakeClient{shorts: shorts}
+		m := newModel(cli)
+		m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+		m = runInit(m)
+
+		m, _ = update(m, tea.KeyPressMsg{Code: 'd', Text: "d"})
+		m, cmd := update(m, k)
+		if cmd != nil || len(cli.actions) != 0 {
+			t.Errorf("%s: expected no command and no action, got actions %v", k, cli.actions)
+		}
+		if m.page != containersPage || strings.Contains(m.View().Content, "Remove container") {
+			t.Errorf("%s: expected the containers page without prompt", k)
 		}
 	}
 }

@@ -18,6 +18,9 @@ var (
 	termKey    = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "terminal"))
 	startKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "start"))
 	stopKey    = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "stop"))
+	restartKey = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "restart"))
+	removeKey  = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove"))
+	confirmKey = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "confirm"))
 	pauseKey   = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "pause"))
 	unpauseKey = key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "unpause"))
 	openKey    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open dir"))
@@ -30,10 +33,10 @@ type containersKeyMap struct {
 	table table.KeyMap
 }
 
-// ShortHelp leaves out the cursor keys, which are in the full help, so that
-// the toggle still fits in 120 columns.
+// ShortHelp leaves out the cursor keys, which are in the full help. On narrow
+// terminals the footer cuts off the last keys with an ellipsis.
 func (k containersKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{logsKey, inspectKey, filesKey, termKey, startKey, stopKey, pauseKey, unpauseKey, quitKey, helpKey}
+	return []key.Binding{logsKey, inspectKey, filesKey, termKey, startKey, stopKey, restartKey, pauseKey, unpauseKey, removeKey, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
@@ -43,6 +46,7 @@ func (k containersKeyMap) FullHelp() [][]key.Binding {
 		{filesKey, termKey},
 		{startKey, stopKey},
 		{pauseKey, unpauseKey},
+		{restartKey, removeKey},
 		{k.table.LineUp, k.table.LineDown},
 		{k.table.GotoTop, k.table.GotoBottom},
 		{k.table.PageUp, k.table.PageDown},
