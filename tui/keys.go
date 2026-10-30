@@ -25,7 +25,11 @@ var (
 	pauseKey   = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "pause"))
 	unpauseKey = key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "unpause"))
 	openKey    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open dir"))
-	backKey    = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
+	copyKey    = key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy"))
+	// submitKey and cancelKey end the prompt for the copy destination.
+	submitKey = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "copy"))
+	cancelKey = key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel"))
+	backKey   = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back"))
 )
 
 // containersKeyMap combines the global keys with those of the containers pane
@@ -87,13 +91,14 @@ type filesKeyMap struct {
 }
 
 func (k filesKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{openKey, backKey, k.table.LineUp, k.table.LineDown, quitKey, helpKey}
+	return []key.Binding{openKey, copyKey, backKey, k.table.LineUp, k.table.LineDown, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k filesKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{openKey, backKey},
+		{openKey, copyKey},
+		{backKey},
 		{k.table.LineUp, k.table.LineDown},
 		{k.table.GotoTop, k.table.GotoBottom},
 		{k.table.PageUp, k.table.PageDown},

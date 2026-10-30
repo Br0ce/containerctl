@@ -30,6 +30,9 @@ type fakeClient struct {
 	// directory.
 	files    map[string][]file.Info
 	filesErr error
+	// copies records the copied files, e.g. "/app/main.go -> out.go".
+	copies  []string
+	copyErr error
 	// terminal, if set, runs in place of the shell session.
 	terminal func(id string, in io.Reader, out io.Writer) error
 	// actions records the container actions in the order they ran, e.g.
@@ -78,6 +81,17 @@ func (f *fakeClient) FilesIn(ctx context.Context, root file.Info) ([]file.Info, 
 		return nil, errors.New("unexpected container " + root.ContainerID)
 	}
 	return f.files[root.Path], f.filesErr
+}
+
+func (f *fakeClient) CopyFrom(ctx context.Context, src file.Info, dst string) (string, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return "", errors.New("expected a deadline on the request context")
+	}
+	f.copies = append(f.copies, src.Path+" -> "+dst)
+	if f.copyErr != nil {
+		return "", f.copyErr
+	}
+	return "/home/user/" + dst, nil
 }
 
 func (f *fakeClient) Details(ctx context.Context, id string) (container.Details, error) {
@@ -518,6 +532,114 @@ func TestFilesKeyIgnoredOnFilesPage(t *testing.T) {
 	m, _ = update(m, tea.KeyPressMsg{Code: 'f', Text: "f"})
 	if m.filesSession != session {
 		t.Error("'f' on the files page must not start a new request")
+	}
+}
+
+// typeText presses the keys for s.
+func typeText(m Model, s string) Model {
+	for _, r := range s {
+		m, _ = update(m, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	return m
+}
+
+func TestCopyFile(t *testing.T) {
+	cli := newFilesClient()
+	m := openFiles(t, cli)
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go
+
+	m, _ = update(m, tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if got := ansi.Strip(m.footer()); !strings.Contains(got, "Copy main.go to: main.go") {
+		t.Fatalf("expected the destination prompt with the file name: %q", got)
+	}
+	if h := lipgloss.Height(m.View().Content); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+
+	// Keys edit the destination instead of running their bindings.
+	m = typeText(m, ".bak q")
+	if m.page != filesPage {
+		t.Fatal("keys in the prompt left the files page")
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	m, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected copy command")
+	}
+	if strings.Contains(ansi.Strip(m.footer()), "Copy main.go") {
+		t.Error("prompt still shown after enter")
+	}
+	m, _ = update(m, cmd())
+	if len(cli.copies) != 1 || cli.copies[0] != "/app/main.go -> main.go.bak" {
+		t.Errorf("copies = %q", cli.copies)
+	}
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "copied main.go to /home/user/main.go.bak") {
+		t.Errorf("expected the result on the status line: %q", got)
+	}
+}
+
+func TestCopyDir(t *testing.T) {
+	cli := newFilesClient()
+	m := openFiles(t, cli)
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // static
+	m, _ = update(m, tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected copy command")
+	}
+	_, _ = update(m, cmd())
+	if len(cli.copies) != 1 || cli.copies[0] != "/app/static -> static" {
+		t.Errorf("copies = %q", cli.copies)
+	}
+}
+
+func TestCopyCanceled(t *testing.T) {
+	for _, k := range []tea.KeyPressMsg{{Code: tea.KeyEscape}, {Code: 'c', Mod: tea.ModCtrl}} {
+		cli := newFilesClient()
+		m := openFiles(t, cli)
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+		m, _ = update(m, tea.KeyPressMsg{Code: 'c', Text: "c"})
+		m, cmd := update(m, k)
+		if cmd != nil || m.page != filesPage {
+			t.Errorf("%s: expected the prompt closed without a command or leaving the page", k)
+		}
+		if strings.Contains(ansi.Strip(m.footer()), "Copy") {
+			t.Errorf("%s: prompt still shown", k)
+		}
+	}
+}
+
+func TestCopySkipsParent(t *testing.T) {
+	m := openFiles(t, newFilesClient()) // .. is selected
+	if m, _ := update(m, tea.KeyPressMsg{Code: 'c', Text: "c"}); m.copying.Path != "" {
+		t.Error("expected no prompt for the parent entry")
+	}
+}
+
+func TestCopyEmptyDestination(t *testing.T) {
+	cli := newFilesClient()
+	m := openFiles(t, cli)
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m, _ = update(m, tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m, _ = update(m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}) // delete before cursor
+	if _, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
+		t.Error("expected no copy without a destination")
+	}
+}
+
+func TestCopyError(t *testing.T) {
+	cli := newFilesClient()
+	cli.copyErr = errors.New("/home/user/main.go already exists")
+	m := openFiles(t, cli)
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go
+	m, _ = update(m, tea.KeyPressMsg{Code: 'c', Text: "c"})
+	m, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	m, _ = update(m, cmd())
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "copy main.go: /home/user/main.go already exists") {
+		t.Errorf("expected the error on the status line: %q", got)
 	}
 }
 

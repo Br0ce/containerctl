@@ -24,6 +24,9 @@ const (
 	// actionTimeout bounds a container action. It exceeds the 10 second grace
 	// period Docker gives a container to stop before killing it.
 	actionTimeout = 30 * time.Second
+	// copyTimeout bounds copying a file or directory out of a container,
+	// which transfers its whole content.
+	copyTimeout = 5 * time.Minute
 	// refreshInterval is the pause between the end of one container fetch
 	// and the start of the next.
 	refreshInterval = 3 * time.Second
@@ -134,6 +137,24 @@ func actionStatus(msg actionMsg) string {
 	}
 	reason = strings.TrimPrefix(reason, "Error response from daemon: ")
 	return msg.verb + " " + msg.name + ": " + reason
+}
+
+// copyMsg reports the end of copying file name to the local path dst.
+type copyMsg struct {
+	name string
+	dst  string
+	err  error
+}
+
+// copyFile copies src out of its container to dst in the background.
+func copyFile(cli Client, src file.Info, dst string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), copyTimeout)
+		defer cancel()
+
+		dst, err := cli.CopyFrom(ctx, src, dst)
+		return copyMsg{name: src.Name, dst: dst, err: err}
+	}
 }
 
 // clearStatusMsg hides the status line, unless a newer message replaced the

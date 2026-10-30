@@ -18,14 +18,38 @@ It sits as a thin layer between the [Bubble Tea](https://github.com/charmbracele
 
 ## TUI
 
-The default view lists all containers on the connected host. Select a container with the arrow keys, then:
+The default view lists all containers on the connected host, with a colored dot showing each container's state. Select a container to:
 
-- Press `l` to stream its logs in real time.
-- Press `t` to open an interactive shell session inside the container. This is also the preferred way to explore a running container's filesystem. Exit the shell as usual with `exit`.
-- Press `f` to browse the filesystem without a shell — useful for stopped containers or distroless images that have no shell. The view reads only the tar headers of the container's filesystem, so no data is extracted. Navigate into directories with `Enter` or use `..` to go up.
-- Press `s` / `x` to start or stop a container, or `p` / `u` to pause or unpause it.
+- **Logs** — follow its output in real time.
+- **Shell** — open an interactive shell inside the container.
+- **Files** — browse the filesystem without a shell, which also works for stopped containers and distroless images, and copy files or directories to your machine.
+- **Inspect** — view the container's configuration and details.
+- **Stats** — watch live CPU, memory and network usage.
 
-Press `Esc` from any sub-view to return to the container list, or `q` to quit. The footer shows the keys available in the current view; press `?` to toggle the full help.
+You can also start, stop, restart, pause and remove containers. Actions run in the background so the UI stays responsive; failures are reported briefly on the status line.
+
+### Keys
+
+| Key          | Page       | Action                                  |
+|--------------|------------|-----------------------------------------|
+| `l`          | containers | Stream logs                             |
+| `t`          | containers | Open a shell in the container           |
+| `f`          | containers | Browse the filesystem                   |
+| `i`          | containers | Inspect container details               |
+| `m`          | containers | Show live resource stats                |
+| `s` / `x`    | containers | Start / stop                            |
+| `r`          | containers | Restart                                 |
+| `p` / `u`    | containers | Pause / unpause                         |
+| `d`          | containers | Remove (confirm with `y`)               |
+| `Enter`      | files      | Open directory                          |
+| `c`          | files      | Copy file or directory to local         |
+| `r`          | inspect    | Refresh details                         |
+| `e`          | inspect    | Show / hide environment values          |
+| `Esc`        | any        | Back to the container list              |
+| `?`          | any        | Toggle full help                        |
+| `q`          | any        | Quit                                    |
+
+The footer shows the keys available in the current view.
 
 ## SSH
 
@@ -42,7 +66,7 @@ The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its 
   # Connect to remote host using default SSH settings
   cctl --host my-host
 
-  # Connect to remote host using with SSH key
+  # Connect to remote host using an SSH key
   cctl --host my-host:23 --identity-file ~/.ssh/id_rsa
 
   # Connect to remote host with username embedded in host and password prompted

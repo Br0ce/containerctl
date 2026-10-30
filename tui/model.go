@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -63,11 +64,17 @@ type Model struct {
 	// removing is the container awaiting confirmation for removal; its ID
 	// is empty if no removal is pending.
 	removing container.Short
+	// copying is the file awaiting a destination to be copied to; its Path
+	// is empty if no copy is pending. dest is the prompt for the
+	// destination.
+	copying file.Info
+	dest    textinput.Model
 	// status is a short message shown above the footer on every page, such
 	// as a failed container action; it is empty if nothing is shown.
 	// statusSession identifies the current message, so that the timer of
 	// an earlier one doesn't clear it.
 	status        string
+	statusStyle   lipgloss.Style
 	statusSession int
 }
 
@@ -79,6 +86,7 @@ func newModel(cli Client) Model {
 		containers: containers.New(),
 		logs:       logs.New(),
 		files:      files.New(),
+		dest:       textinput.New(),
 		inspect:    inspect.New(),
 		stats:      stats.New(),
 		stopLogs:   func() {},
@@ -101,6 +109,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.containers = m.containers.SetErr(nil)
 		if m.removing.ID != "" {
 			return m.confirmRemove(msg)
+		}
+		if m.copying.Path != "" {
+			return m.promptCopy(msg)
 		}
 		switch {
 		case key.Matches(msg, quitKey):
@@ -141,6 +152,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case m.page == filesPage && key.Matches(msg, openKey):
 			return m.openDir()
+		case m.page == filesPage && key.Matches(msg, copyKey):
+			return m.startCopy()
 		case m.page == inspectPage && key.Matches(msg, refreshKey):
 			m.inspectSession++
 			return m, fetchDetails(m.cli, m.inspectSession, m.inspected)
@@ -217,7 +230,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			return m, nil
 		}
-		return m.setStatus(actionStatus(msg))
+		return m.setStatus(theme.Alert, actionStatus(msg))
+
+	case copyMsg:
+		if msg.err != nil {
+			return m.setStatus(theme.Alert, actionStatus(actionMsg{verb: "copy", name: msg.name, err: msg.err}))
+		}
+		return m.setStatus(theme.Value, "copied "+msg.name+" to "+msg.dst)
 
 	case clearStatusMsg:
 		if msg.session != m.statusSession {
@@ -256,6 +275,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
+	if m.copying.Path != "" {
+		// Lets the prompt's cursor blink.
+		m.dest, cmd = m.dest.Update(msg)
+		return m, cmd
+	}
 	switch m.page {
 	case containersPage:
 		m.containers, cmd = m.containers.Update(msg)
@@ -281,9 +305,10 @@ func (m Model) runAction(verb string, action func(ctx context.Context, id string
 	return m, containerAction(verb, action, s)
 }
 
-// setStatus shows text on the status line for statusDuration.
-func (m Model) setStatus(text string) (Model, tea.Cmd) {
+// setStatus shows text in style on the status line for statusDuration.
+func (m Model) setStatus(style lipgloss.Style, text string) (Model, tea.Cmd) {
 	m.status = text
+	m.statusStyle = style
 	m.statusSession++
 	return m.layout(), clearStatus(m.statusSession)
 }
@@ -310,6 +335,49 @@ func (m Model) confirmRemove(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	}
 	m = m.clearStatus()
 	return m, containerAction("remove", m.cli.RemoveContainer, s)
+}
+
+// startCopy prompts for the destination of the selected file or directory,
+// proposing its name in the working directory. The parent entry is skipped.
+func (m Model) startCopy() (Model, tea.Cmd) {
+	f, ok := m.files.Selected()
+	if !ok || f.Name == ".." {
+		return m, nil
+	}
+	m.copying = f
+	m.dest.Reset()
+	m.dest.Prompt = "Copy " + f.Name + " to: "
+	m.dest.SetValue(f.Name)
+	cmd := m.dest.Focus()
+	return m.layout(), cmd
+}
+
+// promptCopy handles a key while the copy destination is entered: enter
+// copies without waiting for it, esc cancels, and any other key edits the
+// destination. The key is not passed on.
+func (m Model) promptCopy(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, submitKey):
+		f, dst := m.copying, strings.TrimSpace(m.dest.Value())
+		m = m.endCopy()
+		if dst == "" {
+			return m, nil
+		}
+		m = m.clearStatus()
+		return m, copyFile(m.cli, f, dst)
+	case key.Matches(msg, cancelKey):
+		return m.endCopy(), nil
+	}
+	var cmd tea.Cmd
+	m.dest, cmd = m.dest.Update(msg)
+	return m, cmd
+}
+
+// endCopy closes the prompt for the copy destination.
+func (m Model) endCopy() Model {
+	m.copying = file.Info{}
+	m.dest.Blur()
+	return m.layout()
 }
 
 // openLogs switches to the logs page and starts streaming the logs of the
@@ -392,6 +460,7 @@ func (m Model) openDir() (Model, tea.Cmd) {
 func (m Model) layout() Model {
 	m.header = m.header.SetWidth(m.width)
 	m.help.SetWidth(m.width)
+	m.dest.SetWidth(max(m.width-lipgloss.Width(m.dest.Prompt)-1, 1))
 	bodyH := max(m.height-header.Height-lipgloss.Height(m.footer()), 0)
 	m.containers = m.containers.SetSize(m.width, bodyH)
 	m.logs = m.logs.SetSize(m.width, bodyH)
@@ -401,17 +470,21 @@ func (m Model) layout() Model {
 	return m
 }
 
-// footer renders the help for the active page, or the confirmation prompt
-// while a removal is pending, below the status line if a message is shown.
+// footer renders the help for the active page, the confirmation prompt while
+// a removal is pending or the destination prompt while a copy is pending,
+// below the status line if a message is shown.
 // Each line is cut to the window width, since help lets items overflow when
 // no ellipsis fits after the last one that does.
 func (m Model) footer() string {
 	var status string
 	if m.status != "" {
-		status = theme.Alert.Render(ansi.Truncate(m.status, m.width, "…")) + "\n"
+		status = m.statusStyle.Render(ansi.Truncate(m.status, m.width, "…")) + "\n"
 	}
 	if m.removing.ID != "" {
 		return status + ansi.Truncate("Remove container "+m.removing.Name+"? (y/N)", m.width, "…")
+	}
+	if m.copying.Path != "" {
+		return status + ansi.Truncate(m.dest.View(), m.width, "…")
 	}
 	var keys help.KeyMap
 	switch m.page {
