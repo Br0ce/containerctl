@@ -3,6 +3,7 @@ package client
 import (
 	"archive/tar"
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/Br0ce/containerctl/container"
+	"github.com/Br0ce/containerctl/engine"
 	"github.com/Br0ce/containerctl/file"
 )
 
@@ -96,16 +98,49 @@ func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
 
 	var shorts []container.Short
 	for _, sum := range sums {
+		status, age := splitStatus(sum.Status)
 		shorts = append(shorts, container.Short{
-			ID:     sum.ID,
-			Name:   strings.TrimPrefix(sum.Names[0], "/"),
-			Image:  sum.Image,
-			Status: sum.Status,
-			State:  string(sum.State),
+			ID:      sum.ID,
+			Project: sum.Labels["com.docker.compose.project"],
+			Name:    strings.TrimPrefix(sum.Names[0], "/"),
+			Image:   sum.Image,
+			Ports:   publishedPorts(sum.Ports),
+			Status:  status,
+			Age:     age,
+			State:   string(sum.State),
+			Health:  health(sum.Health),
 		})
 	}
 
 	return shorts, nil
+}
+
+// publishedPorts returns the ports published on the host, sorted and without
+// the duplicates Docker reports for IPv4 and IPv6.
+func publishedPorts(ports []mcont.PortSummary) []container.Port {
+	var pub []container.Port
+	for _, p := range ports {
+		if p.PublicPort == 0 {
+			continue
+		}
+		pub = append(pub, container.Port{Public: p.PublicPort, Private: p.PrivatePort, Proto: p.Type})
+	}
+	slices.SortFunc(pub, func(a, b container.Port) int {
+		return cmp.Or(
+			cmp.Compare(a.Public, b.Public),
+			cmp.Compare(a.Private, b.Private),
+			strings.Compare(a.Proto, b.Proto),
+		)
+	})
+	return slices.Compact(pub)
+}
+
+// health is empty for daemons older than API 1.52, which don't report it.
+func health(h *mcont.HealthSummary) string {
+	if h == nil {
+		return ""
+	}
+	return string(h.Status)
 }
 
 func (cli *Client) Logs(ctx context.Context, id string) (LogSeq, context.CancelFunc) {
@@ -354,6 +389,27 @@ func (cli *Client) Terminal(ctx context.Context, id string, in io.Reader, out io
 	// Stream shell output to out; returns when the shell exits and the connection is closed.
 	_, err = io.Copy(out, resp.Reader)
 	return err
+}
+
+// Engine returns the version and system information of the Docker host.
+func (cli *Client) Engine(ctx context.Context) (engine.Info, error) {
+	ver, err := cli.client.ServerVersion(ctx, mcli.ServerVersionOptions{})
+	if err != nil {
+		return engine.Info{}, fmt.Errorf("server version: %w", err)
+	}
+	info, err := cli.client.Info(ctx, mcli.InfoOptions{})
+	if err != nil {
+		return engine.Info{}, fmt.Errorf("server info: %w", err)
+	}
+	return engine.Info{
+		Hostname:   info.Info.Name,
+		Version:    ver.Version,
+		APIVersion: ver.APIVersion,
+		OS:         ver.Os,
+		Arch:       ver.Arch,
+		CPUs:       info.Info.NCPU,
+		Memory:     info.Info.MemTotal,
+	}, nil
 }
 
 func (cli *Client) DaemonHost() string {

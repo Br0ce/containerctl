@@ -58,7 +58,7 @@ func newModel(cli Client) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return fetchContainers(m.cli)
+	return tea.Batch(fetchContainers(m.cli), fetchEngine(m.cli))
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -106,6 +106,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		return m, fetchContainers(m.cli)
+
+	case engineMsg:
+		// Without the host's information the header keeps showing the
+		// connection target and client API version; nothing else depends on
+		// it.
+		if msg.err == nil {
+			m.header = m.header.SetEngine(msg.info)
+		}
+		return m, nil
 
 	case containersMsg:
 		m.err = msg.err

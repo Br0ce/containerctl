@@ -48,3 +48,12 @@ func TestStateCell(t *testing.T) {
 		seen[got] = state
 	}
 }
+
+func TestHealthMark(t *testing.T) {
+	tests := map[string]string{"healthy": "✓", "unhealthy": "✗", "starting": "…", "": "?", "none": "?"}
+	for health, want := range tests {
+		if got := ansi.Strip(HealthMark(health)); got != want {
+			t.Errorf("%q: mark = %q, want %q", health, got, want)
+		}
+	}
+}

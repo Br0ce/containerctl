@@ -6,6 +6,7 @@ import (
 
 	"github.com/Br0ce/containerctl/client"
 	"github.com/Br0ce/containerctl/container"
+	"github.com/Br0ce/containerctl/engine"
 	"github.com/Br0ce/containerctl/file"
 )
 
@@ -19,6 +20,7 @@ type Client interface {
 	StopContainer(ctx context.Context, id string) error
 	PauseContainer(ctx context.Context, id string) error
 	UnpauseContainer(ctx context.Context, id string) error
+	Engine(ctx context.Context) (engine.Info, error)
 	DaemonHost() string
 	DaemonVersion() string
 }

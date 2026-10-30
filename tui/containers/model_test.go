@@ -2,6 +2,7 @@ package containers
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,9 +14,9 @@ import (
 )
 
 var shorts = []container.Short{
-	{ID: "aaaaaaaaaaaaaaaa", Name: "web", Image: "nginx", Status: "Up 2 hours", State: "running"},
-	{ID: "bbbbbbbbbbbbbbbb", Name: "db", Image: "postgres", Status: "Exited (0)", State: "exited"},
-	{ID: "cccccccccccccccc", Name: "cache", Image: "redis", Status: "Paused", State: "paused"},
+	{ID: "aaaaaaaaaaaaaaaa", Project: "shop", Name: "web", Image: "nginx", Ports: []container.Port{{Public: 8080, Private: 80, Proto: "tcp"}}, Status: "Up", Age: "2h", State: "running", Health: "healthy"},
+	{ID: "bbbbbbbbbbbbbbbb", Name: "db", Image: "postgres", Status: "Exited (0)", Age: "3m", State: "exited"},
+	{ID: "cccccccccccccccc", Name: "cache", Image: "redis", Status: "Up (Paused)", Age: "5d", State: "paused"},
 }
 
 func press(k string) tea.KeyPressMsg {
@@ -94,14 +95,15 @@ func TestSelectionBarIntact(t *testing.T) {
 	if n := strings.Count(selected, ansi.ResetStyle); n != 1 {
 		t.Errorf("selected row has %d full resets, want 1: %q", n, selected)
 	}
-	// The state dot resets the foreground to the terminal default (SGR 39),
-	// so the selection must not set a foreground of its own.
-	if n := foregrounds(selected); n != 1 {
-		t.Errorf("selected row sets %d foreground colors, want 1 (the state dot): %q", n, selected)
+	// The state dot and health mark reset the foreground to the terminal
+	// default (SGR 39), so the selection must not set a foreground of its own.
+	if n := foregrounds(selected); n != 2 {
+		t.Errorf("selected row sets %d foreground colors, want 2 (state dot and health mark): %q", n, selected)
 	}
 	row := strings.TrimSpace(ansi.Strip(selected))
-	if !strings.HasPrefix(row, "●") || !strings.HasSuffix(row, "Up 2 hours") {
-		t.Errorf("selected row = %q, want it to start with the state dot and end with the status", row)
+	fields := strings.Fields(row)
+	if fields[0] != "●" || !slices.Equal(fields[len(fields)-4:], []string{"✓", "Up", "2h", "8080→80"}) {
+		t.Errorf("selected row = %q, want it to start with the state dot and end with health, status, age and ports", row)
 	}
 }
 
@@ -119,8 +121,8 @@ func TestDimNotRunning(t *testing.T) {
 		switch {
 		case s.State == "running" && n != 0:
 			t.Errorf("%s: running row has %d faint cells, want 0: %q", s.Name, n, line)
-		case s.State != "running" && n != 4:
-			t.Errorf("%s: %s row has %d faint cells, want 4: %q", s.Name, s.State, n, line)
+		case s.State != "running" && n != 7:
+			t.Errorf("%s: %s row has %d faint cells, want 7: %q", s.Name, s.State, n, line)
 		case n > 0 && strings.Index(line, faint) < strings.Index(line, "●"):
 			t.Errorf("%s: state dot is faint: %q", s.Name, line)
 		}
@@ -159,15 +161,15 @@ func foregrounds(s string) int {
 
 var sgr = regexp.MustCompile("\x1b\\[([0-9;]*)m")
 
-// TestColumnsVisible checks that the state dot leads every row, STATUS is
-// never cut off and the rows span the full pane width, down to the narrowest
-// width where all columns fit.
+// TestColumnsVisible checks that the state dot leads every row, STATUS and
+// AGE are never cut off and the rows span the full pane width, down to the
+// narrowest width where all columns but COMPOSE fit.
 func TestColumnsVisible(t *testing.T) {
-	// The longest status Docker commonly reports.
-	unhealthy := container.Short{ID: "dddddddddddddddd", Name: "api", Image: "app", Status: "Up About a minute (unhealthy)", State: "running"}
-	rows := append([]container.Short{unhealthy}, shorts...)
-	minWidth := stateWidth + idWidth + statusWidth + 2*minFlexWidth + 5*2 + 2
-	for _, w := range []int{minWidth, 80, 100, 120, 200} {
+	// The longest status and age Docker commonly reports.
+	restarting := container.Short{ID: "dddddddddddddddd", Name: "api", Image: "app", Status: "Restarting (137)", Age: "11mo", State: "restarting"}
+	rows := append([]container.Short{restarting}, shorts...)
+	minWidth := stateWidth + idWidth + healthWidth + statusWidth + ageWidth + 3*minFlexWidth + 8*2 + 2
+	for _, w := range []int{minWidth, 80, 86, 87, 100, 120, 200} {
 		m := New().SetSize(w, 10).SetShorts(rows)
 		lines := strings.Split(m.table.View(), "\n")
 		for i, s := range rows {
@@ -178,10 +180,62 @@ func TestColumnsVisible(t *testing.T) {
 			if !strings.Contains(line, s.Status) {
 				t.Errorf("width %d: row %q misses status %q", w, line, s.Status)
 			}
+			if !strings.Contains(line, s.Age) {
+				t.Errorf("width %d: row %q misses age %q", w, line, s.Age)
+			}
 			if got := ansi.StringWidth(line); got != w-2 {
 				t.Errorf("width %d: row is %d wide, want %d", w, got, w-2)
 			}
 		}
+	}
+}
+
+// TestComposeColumn checks that COMPOSE is shown from the width where all
+// flex columns get their minimum width.
+func TestComposeColumn(t *testing.T) {
+	minWidth := stateWidth + idWidth + healthWidth + statusWidth + ageWidth + 4*minFlexWidth + 9*2 + 2
+	for w, want := range map[int]bool{minWidth - 1: false, minWidth: true, 200: true} {
+		m := New().SetSize(w, 10).SetShorts(shorts)
+		lines := strings.Split(ansi.Strip(m.table.View()), "\n")
+		if got := strings.Contains(lines[0], "COMPOSE"); got != want {
+			t.Errorf("width %d: COMPOSE shown = %t, want %t", w, got, want)
+		}
+		if got := strings.Contains(lines[1], "shop"); got != want {
+			t.Errorf("width %d: project shown = %t, want %t: %q", w, got, want, lines[1])
+		}
+	}
+}
+
+func TestHealthMark(t *testing.T) {
+	tests := []struct {
+		state, health, want string
+	}{
+		{"running", "healthy", "✓"},
+		{"running", "unhealthy", "✗"},
+		{"running", "starting", "…"},
+		{"running", "", "?"},
+		{"running", "none", "?"},
+		{"exited", "healthy", ""},
+	}
+	for _, tt := range tests {
+		r := row(container.Short{ID: "a", Status: "Up", State: tt.state, Health: tt.health})
+		if got := ansi.Strip(r[5]); got != tt.want {
+			t.Errorf("%s/%q: health cell = %q, want %q", tt.state, tt.health, got, tt.want)
+		}
+	}
+}
+
+func TestFormatPorts(t *testing.T) {
+	ports := []container.Port{
+		{Public: 53, Private: 53, Proto: "udp"},
+		{Public: 5432, Private: 5432, Proto: "tcp"},
+		{Public: 8888, Private: 8080, Proto: "tcp"},
+	}
+	if got, want := formatPorts(ports), "53/udp, 5432, 8888→8080"; got != want {
+		t.Errorf("formatPorts = %q, want %q", got, want)
+	}
+	if got := formatPorts(nil); got != "" {
+		t.Errorf("formatPorts(nil) = %q, want empty", got)
 	}
 }
 

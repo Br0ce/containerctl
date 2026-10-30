@@ -16,6 +16,7 @@ var (
 	Title  = lipgloss.NewStyle().Bold(true).Foreground(accent)
 	Key    = lipgloss.NewStyle().Foreground(accent)
 	Value  = lipgloss.NewStyle().Foreground(text)
+	Alert  = lipgloss.NewStyle().Foreground(lipgloss.Color("#F87171")) // Bright red
 	Header = lipgloss.NewStyle().Bold(true).Foreground(accent).Padding(0, 1)
 	Cell   = lipgloss.NewStyle().Padding(0, 1)
 	// Selected keeps the terminal's default foreground: colored cells reset
@@ -56,6 +57,26 @@ func Box(title string, width int, content string) string {
 // background of the selected row is kept for the rest of the row.
 func StateCell(state string) string {
 	return ansi.Style{}.ForegroundColor(stateColor(state)).String() + "●" +
+		ansi.Style{}.ForegroundColor(nil).String()
+}
+
+// HealthMark renders a container's health as a colored symbol that resets
+// like StateCell: ✓ healthy, ✗ unhealthy, … starting and ? if the container
+// has no healthcheck or the daemon doesn't report health.
+func HealthMark(health string) string {
+	var mark string
+	var c color.Color
+	switch health {
+	case "healthy":
+		mark, c = "✓", lipgloss.Color("#4ADE80") // Bright green
+	case "unhealthy":
+		mark, c = "✗", lipgloss.Color("#F87171") // Bright red
+	case "starting":
+		mark, c = "…", lipgloss.Color("#FACC15") // Yellow
+	default:
+		mark, c = "?", lipgloss.Color("#9CA3AF") // Light gray
+	}
+	return ansi.Style{}.ForegroundColor(c).String() + mark +
 		ansi.Style{}.ForegroundColor(nil).String()
 }
 

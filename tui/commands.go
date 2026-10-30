@@ -11,6 +11,7 @@ import (
 	"github.com/muesli/cancelreader"
 
 	"github.com/Br0ce/containerctl/container"
+	"github.com/Br0ce/containerctl/engine"
 	"github.com/Br0ce/containerctl/file"
 )
 
@@ -44,6 +45,22 @@ func fetchContainers(cli Client) tea.Cmd {
 
 		shorts, err := cli.AllShorts(ctx)
 		return containersMsg{shorts: shorts, err: err}
+	}
+}
+
+// engineMsg carries the Docker host's information, fetched once at startup.
+type engineMsg struct {
+	info engine.Info
+	err  error
+}
+
+func fetchEngine(cli Client) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+
+		info, err := cli.Engine(ctx)
+		return engineMsg{info: info, err: err}
 	}
 }
 

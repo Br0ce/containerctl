@@ -14,6 +14,7 @@ import (
 
 	"github.com/Br0ce/containerctl/client"
 	"github.com/Br0ce/containerctl/container"
+	"github.com/Br0ce/containerctl/engine"
 	"github.com/Br0ce/containerctl/file"
 )
 
@@ -33,6 +34,8 @@ type fakeClient struct {
 	// "stop aaaaaaaaaaaaaaaa".
 	actions   []string
 	actionErr error
+	engine    engine.Info
+	engineErr error
 }
 
 func (f *fakeClient) AllShorts(ctx context.Context) ([]container.Short, error) {
@@ -98,6 +101,13 @@ func (f *fakeClient) UnpauseContainer(ctx context.Context, id string) error {
 	return f.action(ctx, "unpause", id)
 }
 
+func (f *fakeClient) Engine(ctx context.Context) (engine.Info, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return engine.Info{}, errors.New("expected a deadline on the request context")
+	}
+	return f.engine, f.engineErr
+}
+
 func (f *fakeClient) DaemonHost() string    { return "unix:///var/run/docker.sock" }
 func (f *fakeClient) DaemonVersion() string { return "1.47" }
 
@@ -106,11 +116,36 @@ func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	return updated.(Model), cmd
 }
 
+// runInit applies the messages of the commands Init starts.
+func runInit(m Model) Model {
+	for _, cmd := range m.Init()().(tea.BatchMsg) {
+		m, _ = update(m, cmd())
+	}
+	return m
+}
+
+func TestInitLoadsEngine(t *testing.T) {
+	info := engine.Info{Hostname: "prod-01", Version: "29.0.1", APIVersion: "1.52"}
+	m := newModel(&fakeClient{engine: info})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 10})
+	m = runInit(m)
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "prod-01") || !strings.Contains(got, "29.0.1 (API 1.52)") {
+		t.Errorf("header doesn't show the engine:\n%s", got)
+	}
+
+	m = newModel(&fakeClient{engineErr: errors.New("boom")})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 10})
+	m = runInit(m)
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "Version: 1.47") || strings.Contains(got, "boom") {
+		t.Errorf("header doesn't fall back to the client version:\n%s", got)
+	}
+}
+
 func TestInitLoadsContainers(t *testing.T) {
 	m := newModel(&fakeClient{shorts: shorts})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 10})
 
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 	if m.err != nil {
 		t.Fatalf("unexpected error: %v", m.err)
 	}
@@ -121,7 +156,7 @@ func TestInitLoadsContainers(t *testing.T) {
 
 func TestFetchError(t *testing.T) {
 	m := newModel(&fakeClient{err: errors.New("boom")})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 	if !strings.Contains(m.View().Content, "boom") {
 		t.Errorf("view does not show the error: %q", m.View().Content)
 	}
@@ -165,7 +200,7 @@ func TestTickFetchesContainers(t *testing.T) {
 func TestHelpToggle(t *testing.T) {
 	m := newModel(&fakeClient{shorts: shorts})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 
 	got := m.View().Content
 	if !strings.Contains(got, "toggle help") || strings.Contains(got, "go to start") {
@@ -218,7 +253,7 @@ func openLogs(t *testing.T, cli *fakeClient) (Model, tea.Cmd) {
 	t.Helper()
 	m := newModel(cli)
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 	m, cmd := update(m, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	if m.page != logsPage {
 		t.Fatal("expected logs page after 'l'")
@@ -326,7 +361,7 @@ func openFiles(t *testing.T, cli *fakeClient) Model {
 	t.Helper()
 	m := newModel(cli)
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 	m, cmd := update(m, tea.KeyPressMsg{Code: 'f', Text: "f"})
 	if m.page != filesPage {
 		t.Fatal("expected files page after 'f'")
@@ -429,7 +464,7 @@ func TestFilesKeyIgnoredOnFilesPage(t *testing.T) {
 func TestTerminalKey(t *testing.T) {
 	m := newModel(&fakeClient{shorts: shorts})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 	if _, cmd := update(m, tea.KeyPressMsg{Code: 't', Text: "t"}); cmd == nil {
 		t.Error("expected terminal command on the containers page")
 	}
@@ -447,7 +482,7 @@ func TestTerminalKey(t *testing.T) {
 func TestTerminalError(t *testing.T) {
 	m := newModel(&fakeClient{shorts: shorts})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 
 	m, _ = update(m, terminalMsg{err: errors.New("no shell found")})
 	got := ansi.Strip(m.View().Content)
@@ -477,7 +512,7 @@ func TestActionKeys(t *testing.T) {
 		cli := &fakeClient{shorts: shorts}
 		m := newModel(cli)
 		m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
-		m, _ = update(m, m.Init()())
+		m = runInit(m)
 
 		_, cmd := update(m, tea.KeyPressMsg{Code: tc.key, Text: string(tc.key)})
 		if cmd == nil {
@@ -506,7 +541,7 @@ func TestActionKeysIgnoredOnOtherPages(t *testing.T) {
 
 func TestActionKeyWithoutContainers(t *testing.T) {
 	m := newModel(&fakeClient{})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 	if _, cmd := update(m, tea.KeyPressMsg{Code: 's', Text: "s"}); cmd != nil {
 		t.Error("expected no command without a selected container")
 	}
@@ -515,7 +550,7 @@ func TestActionKeyWithoutContainers(t *testing.T) {
 func TestActionError(t *testing.T) {
 	m := newModel(&fakeClient{shorts: shorts})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
-	m, _ = update(m, m.Init()())
+	m = runInit(m)
 
 	m, _ = update(m, actionMsg{err: errors.New("container is not paused")})
 	got := ansi.Strip(m.View().Content)
