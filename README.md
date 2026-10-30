@@ -14,7 +14,7 @@ A lightweight terminal UI for Docker container management, built for speed over 
 `containerctl` removes the friction from managing containers over SSH.
 It’s a lightweight CLI that lets you instantly inspect, control, and tail logs from containers — perfect for remote servers where you want speed, not tooling overhead.
 
-It sits as a thin layer between the [tview](https://github.com/rivo/tview) TUI framework and the [Moby](https://github.com/moby/moby) Docker client. It supports connecting to a remote Docker Engine API directly over SSH, so you can manage containers on a remote host without SSHing in manually.
+It sits as a thin layer between the [Bubble Tea](https://github.com/charmbracelet/bubbletea) TUI framework and the [Moby](https://github.com/moby/moby) Docker client. It supports connecting to a remote Docker Engine API directly over SSH, so you can manage containers on a remote host without SSHing in manually.
 
 ## TUI
 
@@ -25,7 +25,7 @@ The default view lists all containers on the connected host. Select a container 
 - Press `f` to browse the filesystem without a shell — useful for stopped containers or distroless images that have no shell. The view reads only the tar headers of the container's filesystem, so no data is extracted. Navigate into directories with `Enter` or use `..` to go up.
 - Press `s` / `x` to start or stop a container, or `p` / `u` to pause or unpause it.
 
-Press `Esc` from any sub-view to return to the container list, or `q` to quit.
+Press `Esc` from any sub-view to return to the container list, or `q` to quit. The footer shows the keys available in the current view; press `?` to toggle the full help.
 
 ## SSH
 
@@ -48,7 +48,6 @@ The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its 
   # Connect to remote host with username embedded in host and password prompted
   cctl --host username@my-host --ask-password true
 ```
-
 
 ## Install
 
@@ -127,12 +126,6 @@ Available make targets:
 | `format`       | Format code with `go fmt`            |
 | `tidy`         | Tidy and vendor dependencies         |
 | `clean`        | Remove build artifacts               |
-
-## Acknowledgements
-
-- Inspired by [k9s](https://github.com/derailed/k9s)
-- TUI built with [tview](https://github.com/rivo/tview) by [@rivo](https://github.com/rivo)
-- Docker integration via the [Moby](https://github.com/moby/moby) Go client
 
 ## License
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Br0ce/containerctl/pkg/tui"
-	"github.com/Br0ce/containerctl/pkg/version"
+	"github.com/Br0ce/containerctl/tui"
+	"github.com/Br0ce/containerctl/version"
 )
 
 var (
