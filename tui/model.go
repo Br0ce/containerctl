@@ -15,6 +15,7 @@ import (
 	"github.com/Br0ce/containerctl/tui/containers"
 	"github.com/Br0ce/containerctl/tui/files"
 	"github.com/Br0ce/containerctl/tui/header"
+	"github.com/Br0ce/containerctl/tui/inspect"
 	"github.com/Br0ce/containerctl/tui/logs"
 )
 
@@ -24,6 +25,7 @@ const (
 	containersPage page = iota
 	logsPage
 	filesPage
+	inspectPage
 )
 
 type Model struct {
@@ -36,6 +38,7 @@ type Model struct {
 	containers    containers.Model
 	logs          logs.Model
 	files         files.Model
+	inspect       inspect.Model
 	// logSession identifies the current log stream, so that lines still in
 	// flight from a previous stream are dropped.
 	logSession int
@@ -43,6 +46,11 @@ type Model struct {
 	// filesSession identifies the current directory request, so that
 	// listings still in flight from a previous request are dropped.
 	filesSession int
+	// inspectSession identifies the current details request, so that
+	// details still in flight from a previous request are dropped.
+	inspectSession int
+	// inspected is the ID of the container shown on the inspect page.
+	inspected string
 }
 
 func newModel(cli Client) Model {
@@ -53,6 +61,7 @@ func newModel(cli Client) Model {
 		containers: containers.New(),
 		logs:       logs.New(),
 		files:      files.New(),
+		inspect:    inspect.New(),
 		stopLogs:   func() {},
 	}
 }
@@ -81,6 +90,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.openLogs()
 		case m.page == containersPage && key.Matches(msg, filesKey):
 			return m.openFiles()
+		case m.page == containersPage && key.Matches(msg, inspectKey):
+			return m.openInspect()
 		case m.page == containersPage && key.Matches(msg, termKey):
 			if s, ok := m.containers.Selected(); ok {
 				return m, openTerminal(m.cli, s.ID)
@@ -96,9 +107,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.runAction(m.cli.UnpauseContainer)
 		case m.page == filesPage && key.Matches(msg, openKey):
 			return m.openDir()
+		case m.page == inspectPage && key.Matches(msg, refreshKey):
+			m.inspectSession++
+			return m, fetchDetails(m.cli, m.inspectSession, m.inspected)
 		case m.page != containersPage && key.Matches(msg, backKey):
 			m.stopLogs()
 			m.filesSession++
+			m.inspectSession++
 			m.page = containersPage
 			m.header = m.header.ClearContainer()
 			return m.layout(), nil
@@ -107,6 +122,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		m.containers = m.containers.SetDark(msg.IsDark())
 		m.files = m.files.SetDark(msg.IsDark())
+		m.inspect = m.inspect.SetDark(msg.IsDark())
 		return m, nil
 
 	case tickMsg:
@@ -170,6 +186,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.files = m.files.SetFiles(path, msg.files)
 		return m, nil
+
+	case detailsMsg:
+		if msg.session != m.inspectSession {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.inspect = m.inspect.SetErr(msg.err)
+			return m, nil
+		}
+		m.inspect = m.inspect.SetDetails(msg.details)
+		return m, nil
 	}
 
 	var cmd tea.Cmd
@@ -180,6 +207,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logs, cmd = m.logs.Update(msg)
 	case filesPage:
 		m.files, cmd = m.files.Update(msg)
+	case inspectPage:
+		m.inspect, cmd = m.inspect.Update(msg)
 	}
 	return m, cmd
 }
@@ -224,6 +253,21 @@ func (m Model) openFiles() (Model, tea.Cmd) {
 	return m.layout(), fetchFiles(m.cli, m.filesSession, file.Info{ContainerID: s.ID})
 }
 
+// openInspect switches to the inspect page and fetches the details of the
+// selected container.
+func (m Model) openInspect() (Model, tea.Cmd) {
+	s, ok := m.containers.Selected()
+	if !ok {
+		return m, nil
+	}
+	m.inspectSession++
+	m.inspected = s.ID
+	m.inspect = m.inspect.Start()
+	m.header = m.header.SetContainer(s)
+	m.page = inspectPage
+	return m.layout(), fetchDetails(m.cli, m.inspectSession, s.ID)
+}
+
 // openDir lists the selected directory. The current listing stays until the
 // new one arrives.
 func (m Model) openDir() (Model, tea.Cmd) {
@@ -245,6 +289,7 @@ func (m Model) layout() Model {
 	m.containers = m.containers.SetSize(m.width, bodyH)
 	m.logs = m.logs.SetSize(m.width, bodyH)
 	m.files = m.files.SetSize(m.width, bodyH)
+	m.inspect = m.inspect.SetSize(m.width, bodyH)
 	return m
 }
 
@@ -258,6 +303,8 @@ func (m Model) footer() string {
 		keys = logsKeyMap{logs: m.logs.KeyMap()}
 	case filesPage:
 		keys = filesKeyMap{table: m.files.KeyMap()}
+	case inspectPage:
+		keys = inspectKeyMap{inspect: m.inspect.KeyMap()}
 	default:
 		keys = containersKeyMap{table: m.containers.KeyMap()}
 	}
@@ -275,6 +322,8 @@ func (m Model) View() tea.View {
 		content = m.logs.View()
 	case m.page == filesPage:
 		content = m.files.View()
+	case m.page == inspectPage:
+		content = m.inspect.View()
 	case m.err != nil:
 		content = "Error: " + m.err.Error()
 	default:

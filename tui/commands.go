@@ -83,6 +83,25 @@ func fetchFiles(cli Client, session int, root file.Info) tea.Cmd {
 	}
 }
 
+// detailsMsg carries the inspect information of a container. session
+// identifies the request, so that details arriving after the user moved on
+// are dropped.
+type detailsMsg struct {
+	session int
+	details container.Details
+	err     error
+}
+
+func fetchDetails(cli Client, session int, id string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+		defer cancel()
+
+		details, err := cli.Details(ctx, id)
+		return detailsMsg{session: session, details: details, err: err}
+	}
+}
+
 // actionMsg reports the end of a container action such as start or stop.
 type actionMsg struct {
 	err error

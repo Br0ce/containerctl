@@ -4,6 +4,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
 
+	"github.com/Br0ce/containerctl/tui/inspect"
 	"github.com/Br0ce/containerctl/tui/logs"
 )
 
@@ -12,6 +13,8 @@ var (
 	helpKey    = key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "toggle help"))
 	logsKey    = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "logs"))
 	filesKey   = key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "files"))
+	inspectKey = key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "inspect"))
+	refreshKey = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
 	termKey    = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "terminal"))
 	startKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "start"))
 	stopKey    = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "stop"))
@@ -27,15 +30,17 @@ type containersKeyMap struct {
 	table table.KeyMap
 }
 
+// ShortHelp leaves out the cursor keys, which are in the full help, so that
+// the toggle still fits in 120 columns.
 func (k containersKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{logsKey, filesKey, termKey, startKey, stopKey, pauseKey, unpauseKey, k.table.LineUp, k.table.LineDown, quitKey, helpKey}
+	return []key.Binding{logsKey, filesKey, inspectKey, termKey, startKey, stopKey, pauseKey, unpauseKey, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k containersKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{logsKey, filesKey},
-		{termKey},
+		{inspectKey, termKey},
 		{startKey, stopKey},
 		{pauseKey, unpauseKey},
 		{k.table.LineUp, k.table.LineDown},
@@ -87,6 +92,30 @@ func (k filesKeyMap) FullHelp() [][]key.Binding {
 		{k.table.GotoTop, k.table.GotoBottom},
 		{k.table.PageUp, k.table.PageDown},
 		{k.table.HalfPageUp, k.table.HalfPageDown},
+		{quitKey, helpKey},
+	}
+}
+
+// inspectKeyMap combines the global keys with those of the inspect pane for
+// the help footer.
+type inspectKeyMap struct {
+	inspect inspect.KeyMap
+}
+
+func (k inspectKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{backKey, refreshKey, k.inspect.Env, k.inspect.Up, k.inspect.Down, quitKey, helpKey}
+}
+
+// FullHelp pairs related bindings so the full help fits on two lines.
+func (k inspectKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{backKey, refreshKey},
+		{k.inspect.Env},
+		{k.inspect.Up, k.inspect.Down},
+		{k.inspect.Top, k.inspect.Bottom},
+		{k.inspect.PageUp, k.inspect.PageDown},
+		{k.inspect.HalfPageUp, k.inspect.HalfPageDown},
+		{k.inspect.Left, k.inspect.Right},
 		{quitKey, helpKey},
 	}
 }

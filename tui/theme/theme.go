@@ -12,7 +12,11 @@ import (
 var (
 	accent = lipgloss.Color("#1E90FF") // DodgerBlue
 	text   = lipgloss.Color("#C0C0C0") // Silver
-	ink    = lipgloss.Color("#1F2937") // Near-black
+	// Titles are teal, a color used nowhere else, so they stand out from
+	// the accent of the keys and from the values. The light variant is
+	// darker, since bright colors wash out on light backgrounds.
+	titleDark  = lipgloss.Color("#2DD4BF") // Teal
+	titleLight = lipgloss.Color("#0F766E") // Dark teal
 
 	Title  = lipgloss.NewStyle().Bold(true).Foreground(accent)
 	Key    = lipgloss.NewStyle().Foreground(accent)
@@ -27,15 +31,15 @@ var (
 	box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent)
 )
 
-// HeaderFor returns the column header style for the terminal background:
-// silver on dark backgrounds and near-black on light ones, where the accent
-// looks noisy. Header itself is used until the terminal reports its
-// background, and on terminals that never do.
+// HeaderFor returns the style of column headers and section titles for the
+// terminal background: teal on dark backgrounds and dark teal on light ones.
+// Header itself is used until the terminal reports its background, and on
+// terminals that never do.
 func HeaderFor(dark bool) lipgloss.Style {
 	if dark {
-		return Header.Foreground(text)
+		return Header.Foreground(titleDark)
 	}
-	return Header.Foreground(ink)
+	return Header.Foreground(titleLight)
 }
 
 // BoxFrame is the number of columns and rows a Box adds around its content.

@@ -33,10 +33,12 @@ type fakeClient struct {
 	terminal func(id string, in io.Reader, out io.Writer) error
 	// actions records the container actions in the order they ran, e.g.
 	// "stop aaaaaaaaaaaaaaaa".
-	actions   []string
-	actionErr error
-	engine    engine.Info
-	engineErr error
+	actions    []string
+	actionErr  error
+	engine     engine.Info
+	engineErr  error
+	details    container.Details
+	detailsErr error
 }
 
 func (f *fakeClient) AllShorts(ctx context.Context) ([]container.Short, error) {
@@ -72,6 +74,16 @@ func (f *fakeClient) FilesIn(ctx context.Context, root file.Info) ([]file.Info, 
 		return nil, errors.New("unexpected container " + root.ContainerID)
 	}
 	return f.files[root.Path], f.filesErr
+}
+
+func (f *fakeClient) Details(ctx context.Context, id string) (container.Details, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return container.Details{}, errors.New("expected a deadline on the request context")
+	}
+	if id != shorts[0].ID {
+		return container.Details{}, errors.New("unexpected container " + id)
+	}
+	return f.details, f.detailsErr
 }
 
 func (f *fakeClient) Terminal(_ context.Context, id string, in io.Reader, out io.Writer) error {
@@ -156,24 +168,23 @@ func TestInitLoadsContainers(t *testing.T) {
 }
 
 func TestBackgroundColorStylesHeaders(t *testing.T) {
-	// The bold column header for ID; the header pane shows values in silver
-	// too, but not in bold.
-	const silver, blue, ink = "38;2;192;192;192;1mID", "38;2;30;144;255;1mID", "38;2;31;41;55;1mID"
+	// The bold column header for ID.
+	const teal, blue, darkTeal = "38;2;45;212;191;1mID", "38;2;30;144;255;1mID", "38;2;15;118;110;1mID"
 	m := newModel(&fakeClient{shorts: shorts})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 10})
 	m = runInit(m)
-	if got := m.View().Content; !strings.Contains(got, blue) || strings.Contains(got, silver) {
+	if got := m.View().Content; !strings.Contains(got, blue) || strings.Contains(got, teal) {
 		t.Errorf("headers aren't blue before the background is known:\n%q", got)
 	}
 
 	m, _ = update(m, tea.BackgroundColorMsg{Color: color.Black})
-	if got := m.View().Content; !strings.Contains(got, silver) {
-		t.Errorf("headers aren't silver on a dark background:\n%q", got)
+	if got := m.View().Content; !strings.Contains(got, teal) {
+		t.Errorf("headers aren't teal on a dark background:\n%q", got)
 	}
 
 	m, _ = update(m, tea.BackgroundColorMsg{Color: color.White})
-	if got := m.View().Content; !strings.Contains(got, ink) {
-		t.Errorf("headers aren't near-black on a light background:\n%q", got)
+	if got := m.View().Content; !strings.Contains(got, darkTeal) {
+		t.Errorf("headers aren't dark teal on a light background:\n%q", got)
 	}
 }
 
@@ -631,5 +642,109 @@ func TestTerminalCmdStopsInput(t *testing.T) {
 	b := make([]byte, 1)
 	if _, err := r.Read(b); err != nil || b[0] != 'x' {
 		t.Errorf("key after the session = %q, %v; want it left for the TUI", b, err)
+	}
+}
+
+// openInspect loads the containers, presses i on the selected one and
+// delivers the details.
+func openInspect(t *testing.T, cli *fakeClient) Model {
+	t.Helper()
+	m := newModel(cli)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	if m.page != inspectPage {
+		t.Fatal("expected inspect page after 'i'")
+	}
+	if cmd == nil {
+		t.Fatal("expected details command")
+	}
+	m, _ = update(m, cmd())
+	return m
+}
+
+func newInspectClient() *fakeClient {
+	return &fakeClient{shorts: shorts, details: container.Details{
+		ID:    shorts[0].ID,
+		Name:  "web",
+		State: "running",
+		Env:   []string{"DB_PASSWORD=hunter2"},
+	}}
+}
+
+func TestOpenInspect(t *testing.T) {
+	m := openInspect(t, newInspectClient())
+	got := ansi.Strip(m.View().Content)
+	for _, want := range []string{"Inspect", "Name:    web", "GENERAL", "running", "DB_PASSWORD=••••••", "refresh", "show env", "esc"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("view does not contain %q: %q", want, got)
+		}
+	}
+	if strings.Contains(got, "hunter2") {
+		t.Error("environment value shown before toggling")
+	}
+	if h := lipgloss.Height(got); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+
+	m, _ = update(m, tea.KeyPressMsg{Code: 'e', Text: "e"})
+	got = ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "DB_PASSWORD=hunter2") || !strings.Contains(got, "hide env") {
+		t.Errorf("expected the revealed environment: %q", got)
+	}
+}
+
+func TestInspectRefresh(t *testing.T) {
+	cli := newInspectClient()
+	m := openInspect(t, cli)
+
+	cli.details.State = "exited"
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'r', Text: "r"})
+	if cmd == nil {
+		t.Fatal("expected details command after 'r'")
+	}
+	m, _ = update(m, cmd())
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "exited") {
+		t.Errorf("expected the refreshed state: %q", got)
+	}
+
+	cli.detailsErr = errors.New("boom")
+	m, cmd = update(m, tea.KeyPressMsg{Code: 'r', Text: "r"})
+	m, _ = update(m, cmd())
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "Error: boom") || !strings.Contains(got, "exited") {
+		t.Errorf("expected the error above the kept details: %q", got)
+	}
+}
+
+func TestInspectBack(t *testing.T) {
+	m := newModel(newInspectClient())
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.page != containersPage {
+		t.Error("expected containers page after esc")
+	}
+
+	// The details requested before esc arrive late and must be dropped.
+	m, _ = update(m, cmd())
+	if strings.Contains(ansi.Strip(m.inspect.View()), "GENERAL") {
+		t.Error("stale details were applied")
+	}
+}
+
+func TestInspectKeysIgnoredOnOtherPages(t *testing.T) {
+	m, _ := openLogs(t, &fakeClient{shorts: shorts})
+	if _, cmd := update(m, tea.KeyPressMsg{Code: 'i', Text: "i"}); cmd != nil {
+		t.Error("'i' on the logs page must not inspect")
+	}
+	m = openInspect(t, newInspectClient())
+	session := m.inspectSession
+	if m, _ = update(m, tea.KeyPressMsg{Code: 'i', Text: "i"}); m.inspectSession != session {
+		t.Error("'i' on the inspect page must not start a new request")
+	}
+	if _, cmd := update(m, tea.KeyPressMsg{Code: 'x', Text: "x"}); cmd != nil {
+		t.Error("'x' on the inspect page must not stop a container")
 	}
 }

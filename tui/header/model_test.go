@@ -57,6 +57,46 @@ func TestViewContainer(t *testing.T) {
 	}
 }
 
+func TestContainerDetails(t *testing.T) {
+	web := container.Short{
+		ID: "w", Project: "shop", Name: "web", Image: "nginx", State: "running",
+		Status: "Up", Age: "3h", Health: "healthy",
+		Ports: []container.Port{{Public: 8080, Private: 80, Proto: "tcp"}},
+	}
+	m := New("unix:///var/run/docker.sock", "1.47").SetWidth(160).SetContainer(web)
+	view := ansi.Strip(m.View())
+	if strings.Contains(view, "healthy") {
+		t.Errorf("view shows health:\n%s", view)
+	}
+	for _, want := range []string{"Name:    web  (shop)", "Image:   nginx · ● Up 3h · 8080→80"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view does not contain %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestContainerFollowsList(t *testing.T) {
+	web := container.Short{ID: "w", Name: "web", Image: "nginx", State: "running", Status: "Up", Age: "3h"}
+	m := New("unix:///var/run/docker.sock", "1.47").SetWidth(160).SetContainer(web)
+
+	stopped := web
+	stopped.State, stopped.Status, stopped.Age = "exited", "Exited (137)", "1s"
+	m = m.SetShorts([]container.Short{shorts[0], stopped})
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "nginx · ● Exited (137) 1s") {
+		t.Errorf("expected the latest state:\n%s", view)
+	}
+
+	m = m.SetShorts(shorts)
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "nginx · ● removed") || strings.Contains(view, "Exited") {
+		t.Errorf("expected the status replaced by removed:\n%s", view)
+	}
+
+	m = m.SetShorts([]container.Short{web})
+	if view := ansi.Strip(m.View()); strings.Contains(view, "removed") {
+		t.Errorf("removed mark not cleared once the container is back:\n%s", view)
+	}
+}
+
 func TestViewSize(t *testing.T) {
 	for _, w := range []int{120, 61, 20} {
 		view := New("unix:///var/run/docker.sock", "1.47").SetWidth(w).SetShorts(shorts).View()

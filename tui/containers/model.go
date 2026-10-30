@@ -2,8 +2,6 @@ package containers
 
 import (
 	"slices"
-	"strconv"
-	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
@@ -182,7 +180,7 @@ func (m Model) View() string {
 // the running ones stand out; the state dot keeps its color either way.
 // Health is only shown for running containers.
 func row(s container.Short) table.Row {
-	cells := []string{shortID(s.ID), s.Project, s.Name, s.Image, s.Status, s.Age, formatPorts(s.Ports)}
+	cells := []string{shortID(s.ID), s.Project, s.Name, s.Image, s.Status, s.Age, container.FormatPorts(s.Ports)}
 	health := ""
 	if s.State == "running" {
 		health = theme.HealthMark(s.Health)
@@ -192,24 +190,6 @@ func row(s container.Short) table.Row {
 		}
 	}
 	return append(table.Row{theme.StateCell(s.State)}, slices.Insert(cells, 4, health)...)
-}
-
-// formatPorts renders ports as host→container, e.g. "8888→8080, 53/udp". The
-// container port is left out if it equals the host port, the protocol unless
-// it is udp or sctp.
-func formatPorts(ports []container.Port) string {
-	parts := make([]string, len(ports))
-	for i, p := range ports {
-		part := strconv.Itoa(int(p.Public))
-		if p.Private != p.Public {
-			part += "→" + strconv.Itoa(int(p.Private))
-		}
-		if p.Proto != "tcp" {
-			part += "/" + p.Proto
-		}
-		parts[i] = part
-	}
-	return strings.Join(parts, ", ")
 }
 
 func shortID(id string) string {

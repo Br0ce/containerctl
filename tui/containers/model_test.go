@@ -225,20 +225,6 @@ func TestHealthMark(t *testing.T) {
 	}
 }
 
-func TestFormatPorts(t *testing.T) {
-	ports := []container.Port{
-		{Public: 53, Private: 53, Proto: "udp"},
-		{Public: 5432, Private: 5432, Proto: "tcp"},
-		{Public: 8888, Private: 8080, Proto: "tcp"},
-	}
-	if got, want := formatPorts(ports), "53/udp, 5432, 8888→8080"; got != want {
-		t.Errorf("formatPorts = %q, want %q", got, want)
-	}
-	if got := formatPorts(nil); got != "" {
-		t.Errorf("formatPorts(nil) = %q, want empty", got)
-	}
-}
-
 func TestViewFitsSize(t *testing.T) {
 	long := container.Short{
 		ID:    "dddddddddddddddd",

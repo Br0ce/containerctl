@@ -2,6 +2,7 @@ package header
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -22,8 +23,11 @@ type Model struct {
 	running, paused, exited, total int
 	unhealthy, projects            int
 	width                          int
-	// container, if set, is shown in the Info box instead of the counts.
+	// container, if set, is shown in the Info box instead of the counts. It
+	// is kept up to date by SetShorts.
 	container *container.Short
+	// removed is set once container no longer shows up in the list.
+	removed bool
 	// engine, once fetched, replaces the client API version in the Docker
 	// Engine API box.
 	engine *engine.Info
@@ -60,6 +64,22 @@ func (m Model) SetShorts(shorts []container.Short) Model {
 	}
 	m.total = len(shorts)
 	m.projects = len(projects)
+	return m.updateContainer(shorts)
+}
+
+// updateContainer replaces the shown container with its latest state, or
+// marks it as removed if it's gone.
+func (m Model) updateContainer(shorts []container.Short) Model {
+	if m.container == nil {
+		return m
+	}
+	i := slices.IndexFunc(shorts, func(s container.Short) bool { return s.ID == m.container.ID })
+	if i < 0 {
+		m.removed = true
+		return m
+	}
+	m.container = &shorts[i]
+	m.removed = false
 	return m
 }
 
@@ -70,10 +90,10 @@ func (m Model) SetEngine(e engine.Info) Model {
 	return m
 }
 
-// SetContainer shows the name and image of s in the Info box instead of the
-// container counts.
+// SetContainer shows s in the Info box instead of the container counts.
 func (m Model) SetContainer(s container.Short) Model {
 	m.container = &s
+	m.removed = false
 	return m
 }
 
@@ -143,8 +163,8 @@ func formatMemory(b int64) string {
 func (m Model) info(width int) string {
 	if m.container != nil {
 		return box("Info", width,
-			field("Name:", 9, m.container.Name),
-			field("Image:", 9, m.container.Image),
+			field("Name:", 9, nameLine(*m.container)),
+			markedField("Image:", 9, imageLine(*m.container, m.removed)),
 		)
 	}
 	// Unhealthy containers turn red so they're noticed when scrolled out of
@@ -161,6 +181,40 @@ func (m Model) info(width int) string {
 			styledField("Unhealthy:", 11, fmt.Sprintf("%-6d", m.unhealthy), unhealthy)+
 			field("Projects:", 10, fmt.Sprint(m.projects)),
 	)
+}
+
+// nameLine shows the container's name and its compose project if it has
+// one.
+func nameLine(c container.Short) string {
+	if c.Project == "" {
+		return c.Name
+	}
+	return c.Name + "  (" + c.Project + ")"
+}
+
+// imageLine lists the most telling details first, so that the ports are cut
+// off first in narrow terminals. The status follows the state dot; once the
+// container is gone, the dot turns gray and the status reads "removed".
+func imageLine(c container.Short, removed bool) string {
+	sep := theme.Value.Render(" · ")
+	line := theme.Value.Render(c.Image)
+	switch status := strings.TrimSpace(c.Status + " " + c.Age); {
+	case removed:
+		line += sep + theme.StateCell("removed") + " " + theme.Alert.Render("removed")
+	case status != "":
+		line += sep + theme.StateCell(c.State) + theme.Value.Render(" "+status)
+	}
+	if ports := container.FormatPorts(c.Ports); ports != "" {
+		line += sep + theme.Value.Render(ports)
+	}
+	return line
+}
+
+// markedField takes a value that is already styled, since the state and
+// health marks reset the foreground color and would cut off a style applied
+// around them.
+func markedField(key string, keyWidth int, value string) string {
+	return theme.Key.Width(keyWidth).Render(key) + value
 }
 
 func field(key string, keyWidth int, value string) string {
