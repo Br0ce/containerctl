@@ -33,6 +33,10 @@ const (
 	statsPage
 )
 
+// footerIndent lines the footer up with the text in the header boxes, which
+// sits behind the border and one column of padding.
+const footerIndent = 2
+
 type Model struct {
 	cli           Client
 	err           error
@@ -459,8 +463,8 @@ func (m Model) openDir() (Model, tea.Cmd) {
 // shown.
 func (m Model) layout() Model {
 	m.header = m.header.SetWidth(m.width)
-	m.help.SetWidth(m.width)
-	m.dest.SetWidth(max(m.width-lipgloss.Width(m.dest.Prompt)-1, 1))
+	m.help.SetWidth(m.footerWidth())
+	m.dest.SetWidth(max(m.footerWidth()-lipgloss.Width(m.dest.Prompt)-1, 1))
 	bodyH := max(m.height-header.Height-lipgloss.Height(m.footer()), 0)
 	m.containers = m.containers.SetSize(m.width, bodyH)
 	m.logs = m.logs.SetSize(m.width, bodyH)
@@ -473,19 +477,35 @@ func (m Model) layout() Model {
 // footer renders the help for the active page, the confirmation prompt while
 // a removal is pending or the destination prompt while a copy is pending,
 // below the status line if a message is shown.
-// Each line is cut to the window width, since help lets items overflow when
-// no ellipsis fits after the last one that does.
+// Each line is indented by footerIndent and cut to the window width, since
+// help lets items overflow when no ellipsis fits after the last one that does.
 func (m Model) footer() string {
-	var status string
+	var lines []string
 	if m.status != "" {
-		status = m.statusStyle.Render(ansi.Truncate(m.status, m.width, "…")) + "\n"
+		lines = append(lines, m.statusStyle.Render(m.status))
 	}
-	if m.removing.ID != "" {
-		return status + ansi.Truncate("Remove container "+m.removing.Name+"? (y/N)", m.width, "…")
+	switch {
+	case m.removing.ID != "":
+		lines = append(lines, "Remove container "+m.removing.Name+"? (y/N)")
+	case m.copying.Path != "":
+		lines = append(lines, m.dest.View())
+	default:
+		lines = append(lines, strings.Split(m.help.View(m.keyMap()), "\n")...)
 	}
-	if m.copying.Path != "" {
-		return status + ansi.Truncate(m.dest.View(), m.width, "…")
+	indent := strings.Repeat(" ", footerIndent)
+	for i, l := range lines {
+		lines[i] = indent + ansi.Truncate(l, m.footerWidth(), "…")
 	}
+	return strings.Join(lines, "\n")
+}
+
+// footerWidth is the width left to the footer by its indent.
+func (m Model) footerWidth() int {
+	return max(m.width-footerIndent, 0)
+}
+
+// keyMap returns the keys shown in the help for the active page.
+func (m Model) keyMap() help.KeyMap {
 	var keys help.KeyMap
 	switch m.page {
 	case logsPage:
@@ -499,11 +519,7 @@ func (m Model) footer() string {
 	default:
 		keys = containersKeyMap{table: m.containers.KeyMap()}
 	}
-	lines := strings.Split(m.help.View(keys), "\n")
-	for i, l := range lines {
-		lines[i] = ansi.Truncate(l, m.width, "…")
-	}
-	return status + strings.Join(lines, "\n")
+	return keys
 }
 
 func (m Model) View() tea.View {

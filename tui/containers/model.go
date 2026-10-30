@@ -51,22 +51,23 @@ func New() Model {
 		table.WithColumns(columns),
 		table.WithFocused(true),
 		table.WithKeyMap(keyMap()),
-		table.WithStyles(styles(theme.Header)),
+		table.WithStyles(styles(theme.Header, theme.Selected)),
 	)
 	return Model{table: t}
 }
 
-func styles(header lipgloss.Style) table.Styles {
+func styles(header, selected lipgloss.Style) table.Styles {
 	return table.Styles{
 		Header:   header,
 		Cell:     theme.Cell,
-		Selected: theme.Selected,
+		Selected: selected,
 	}
 }
 
-// SetDark adapts the column headers to a dark or light terminal background.
+// SetDark adapts the column headers and the selection to a dark or light
+// terminal background.
 func (m Model) SetDark(dark bool) Model {
-	m.table.SetStyles(styles(theme.HeaderFor(dark)))
+	m.table.SetStyles(styles(theme.HeaderFor(dark), theme.SelectedFor(dark)))
 	return m
 }
 

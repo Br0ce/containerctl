@@ -87,19 +87,8 @@ func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
 		return nil, fmt.Errorf("list containers: %w", err)
 	}
 
-	sums := res.Items
-	slices.SortFunc(sums, func(a, b mcont.Summary) int {
-		if a.State == mcont.StateRunning && b.State != mcont.StateRunning {
-			return -1
-		}
-		if a.State == b.State {
-			return 0
-		}
-		return 1
-	})
-
 	var shorts []container.Short
-	for _, sum := range sums {
+	for _, sum := range res.Items {
 		status, age := splitStatus(sum.Status)
 		shorts = append(shorts, container.Short{
 			ID:      sum.ID,
@@ -113,8 +102,31 @@ func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
 			Health:  health(sum.Health),
 		})
 	}
-
+	sortShorts(shorts)
 	return shorts, nil
+}
+
+// sortShorts puts the running containers first and orders both groups by
+// compose project, with containers outside a project last, and then by name.
+// The order is total, so rows keep their place across refreshes.
+func sortShorts(shorts []container.Short) {
+	slices.SortFunc(shorts, func(a, b container.Short) int {
+		return cmp.Or(
+			cmp.Compare(rank(a.State != string(mcont.StateRunning)), rank(b.State != string(mcont.StateRunning))),
+			cmp.Compare(rank(a.Project == ""), rank(b.Project == "")),
+			strings.Compare(a.Project, b.Project),
+			strings.Compare(a.Name, b.Name),
+			strings.Compare(a.ID, b.ID),
+		)
+	})
+}
+
+// rank sorts true after false.
+func rank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // publishedPorts returns the ports published on the host, sorted and without

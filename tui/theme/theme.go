@@ -29,6 +29,9 @@ var (
 	// Selected keeps the terminal's default foreground: colored cells reset
 	// to it with SGR 39, so any other foreground would break off after them.
 	Selected = lipgloss.NewStyle().Background(accent)
+	// selectedDark is a darker blue for the selection on dark backgrounds,
+	// so that the bright state dots and health marks stay readable on it.
+	selectedDark = lipgloss.Color("#1E40AF") // Dark blue
 
 	box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent)
 )
@@ -42,6 +45,17 @@ func HeaderFor(dark bool) lipgloss.Style {
 		return Header.Foreground(titleDark)
 	}
 	return Header.Foreground(titleLight)
+}
+
+// SelectedFor returns the style of the selected table row for the terminal
+// background. On light backgrounds the default foreground is dark, so the
+// selection keeps the lighter accent there; Selected is used until the
+// terminal reports its background.
+func SelectedFor(dark bool) lipgloss.Style {
+	if dark {
+		return Selected.Background(selectedDark)
+	}
+	return Selected
 }
 
 // BoxFrame is the number of columns and rows a Box adds around its content.

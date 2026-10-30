@@ -322,6 +322,20 @@ func TestFooterFitsWidth(t *testing.T) {
 	}
 }
 
+// TestFooterIndent checks that every footer line is indented to line up with
+// the text in the header boxes.
+func TestFooterIndent(t *testing.T) {
+	m := newModel(&fakeClient{shorts: shorts})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 20})
+	m.help.ShowAll = true
+	m, _ = m.setStatus(lipgloss.NewStyle(), "stop web: boom")
+	for i, l := range strings.Split(ansi.Strip(m.footer()), "\n") {
+		if !strings.HasPrefix(l, "  ") || strings.HasPrefix(l, "   ") {
+			t.Errorf("footer line %d is not indented by 2: %q", i, l)
+		}
+	}
+}
+
 // openLogs loads the containers and presses l on the selected one.
 func openLogs(t *testing.T, cli *fakeClient) (Model, tea.Cmd) {
 	t.Helper()

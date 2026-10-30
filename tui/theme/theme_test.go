@@ -67,6 +67,15 @@ func TestHeaderFor(t *testing.T) {
 	}
 }
 
+func TestSelectedFor(t *testing.T) {
+	if got := SelectedFor(false).GetBackground(); got != accent {
+		t.Errorf("light selection = %v, want accent %v", got, accent)
+	}
+	if got := SelectedFor(true).GetBackground(); got != selectedDark {
+		t.Errorf("dark selection = %v, want dark blue %v", got, selectedDark)
+	}
+}
+
 func TestBytes(t *testing.T) {
 	for b, want := range map[uint64]string{
 		512:        "512 B",

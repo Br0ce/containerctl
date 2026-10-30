@@ -41,6 +41,28 @@ func TestSplitStatus(t *testing.T) {
 	}
 }
 
+func TestSortShorts(t *testing.T) {
+	shorts := []container.Short{
+		{Name: "backup", Project: "shop", State: "exited"},
+		{Name: "scratch", State: "running"},
+		{Name: "web", Project: "shop", State: "running"},
+		{Name: "worker", Project: "shop", State: "paused"},
+		{Name: "grafana", Project: "monitoring", State: "running"},
+		{Name: "db", Project: "shop", State: "running"},
+		{Name: "old", State: "exited"},
+		{Name: "reporter", Project: "monitoring", State: "created"},
+	}
+	sortShorts(shorts)
+	var got []string
+	for _, s := range shorts {
+		got = append(got, s.Name)
+	}
+	want := []string{"grafana", "db", "web", "scratch", "reporter", "backup", "worker", "old"}
+	if !slices.Equal(got, want) {
+		t.Errorf("sortShorts = %v, want %v", got, want)
+	}
+}
+
 func TestPublishedPorts(t *testing.T) {
 	v4, v6 := netip.MustParseAddr("0.0.0.0"), netip.MustParseAddr("::")
 	ports := []mcont.PortSummary{
