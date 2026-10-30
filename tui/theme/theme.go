@@ -12,14 +12,15 @@ import (
 var (
 	accent = lipgloss.Color("#1E90FF") // DodgerBlue
 	text   = lipgloss.Color("#C0C0C0") // Silver
-	white  = lipgloss.Color("#FFFFFF")
 
-	Title    = lipgloss.NewStyle().Bold(true).Foreground(accent)
-	Key      = lipgloss.NewStyle().Foreground(accent)
-	Value    = lipgloss.NewStyle().Foreground(text)
-	Header   = lipgloss.NewStyle().Bold(true).Foreground(accent).Padding(0, 1)
-	Cell     = lipgloss.NewStyle().Padding(0, 1)
-	Selected = lipgloss.NewStyle().Background(accent).Foreground(white)
+	Title  = lipgloss.NewStyle().Bold(true).Foreground(accent)
+	Key    = lipgloss.NewStyle().Foreground(accent)
+	Value  = lipgloss.NewStyle().Foreground(text)
+	Header = lipgloss.NewStyle().Bold(true).Foreground(accent).Padding(0, 1)
+	Cell   = lipgloss.NewStyle().Padding(0, 1)
+	// Selected keeps the terminal's default foreground: colored cells reset
+	// to it with SGR 39, so any other foreground would break off after them.
+	Selected = lipgloss.NewStyle().Background(accent)
 
 	box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent)
 )
@@ -50,11 +51,11 @@ func Box(title string, width int, content string) string {
 	).Render()
 }
 
-// StateCell colors a container state. It resets only the foreground color
-// (SGR 39) instead of all attributes, so the background of the selected row
-// is kept for the rest of the row.
+// StateCell renders a container state as a dot in the state's color. It
+// resets only the foreground color (SGR 39) instead of all attributes, so the
+// background of the selected row is kept for the rest of the row.
 func StateCell(state string) string {
-	return ansi.Style{}.ForegroundColor(stateColor(state)).String() + state +
+	return ansi.Style{}.ForegroundColor(stateColor(state)).String() + "●" +
 		ansi.Style{}.ForegroundColor(nil).String()
 }
 
@@ -65,24 +66,28 @@ func DirCell(name string) string {
 	return ansi.Style{}.Bold().String() + name + ansi.Style{}.Normal().String()
 }
 
-// FileCell dims a file name so that directories stand out. Faint is used
-// instead of a color for the same reason as in DirCell, and resets the same
-// way.
+// Dim renders s faint. Faint is used instead of a color for the same reason
+// as in DirCell, and resets the same way.
+func Dim(s string) string {
+	return ansi.Style{}.Faint().String() + s + ansi.Style{}.Normal().String()
+}
+
+// FileCell dims a file name so that directories stand out.
 func FileCell(name string) string {
-	return ansi.Style{}.Faint().String() + name + ansi.Style{}.Normal().String()
+	return Dim(name)
 }
 
 func stateColor(state string) color.Color {
 	switch state {
 	case "running":
-		return lipgloss.Color("#008000") // Green
+		return lipgloss.Color("#4ADE80") // Bright green
 	case "paused":
-		return lipgloss.Color("#FFD700") // Gold
+		return lipgloss.Color("#FACC15") // Yellow
 	case "removing", "dead":
-		return lipgloss.Color("#FF4500") // OrangeRed
+		return lipgloss.Color("#F87171") // Bright red
 	case "created", "restarting":
-		return lipgloss.Color("#4682B4") // SteelBlue
+		return lipgloss.Color("#C084FC") // Violet; blue would vanish on the selection bar
 	default:
-		return lipgloss.Color("#696969") // DimGray
+		return lipgloss.Color("#9CA3AF") // Light gray
 	}
 }

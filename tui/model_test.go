@@ -238,7 +238,7 @@ func TestOpenLogsStreamsLines(t *testing.T) {
 	}
 	m, cmd = update(m, msg)
 	got := ansi.Strip(m.View().Content)
-	for _, want := range []string{"Name    web", "Image   nginx", "first line", "second line", "esc"} {
+	for _, want := range []string{"Name:    web", "Image:   nginx", "first line", "second line", "esc"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("view does not contain %q: %q", want, got)
 		}
@@ -279,7 +279,7 @@ func TestLogsBack(t *testing.T) {
 		t.Error("expected log stream to be canceled")
 	}
 	got := ansi.Strip(m.View().Content)
-	if !strings.Contains(got, "Containers") || !strings.Contains(got, "Total") || strings.Contains(got, "Image   nginx") {
+	if !strings.Contains(got, "Containers") || !strings.Contains(got, "Total") || strings.Contains(got, "Image:   nginx") {
 		t.Errorf("containers pane and counts not shown: %q", got)
 	}
 }
@@ -341,7 +341,7 @@ func openFiles(t *testing.T, cli *fakeClient) Model {
 func TestOpenFilesListsWorkdir(t *testing.T) {
 	m := openFiles(t, newFilesClient())
 	got := ansi.Strip(m.View().Content)
-	for _, want := range []string{"/app", "Name    web", "static", "main.go", "2.0 KB", "open dir", "esc"} {
+	for _, want := range []string{"/app", "Name:    web", "static", "main.go", "2.0 KB", "open dir", "esc"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("view does not contain %q: %q", want, got)
 		}

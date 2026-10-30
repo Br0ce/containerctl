@@ -73,13 +73,13 @@ func (m Model) View() string {
 func (m Model) info(width int) string {
 	if m.container != nil {
 		return box("Info", width,
-			field("Name", 8, strings.TrimPrefix(m.container.Name, "/")),
-			field("Image", 8, m.container.Image),
+			field("Name:", 9, m.container.Name),
+			field("Image:", 9, m.container.Image),
 		)
 	}
 	return box("Info", width,
-		field("Running", 8, fmt.Sprintf("%-6d", m.running))+"  "+field("Paused", 7, fmt.Sprint(m.paused)),
-		field("Total", 8, fmt.Sprint(m.total)),
+		field("Running:", 9, fmt.Sprintf("%-6d", m.running))+"  "+field("Paused:", 8, fmt.Sprint(m.paused)),
+		field("Total:", 9, fmt.Sprint(m.total)),
 	)
 }
 

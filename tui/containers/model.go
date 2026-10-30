@@ -12,18 +12,20 @@ import (
 // Widths of the fixed columns. NAME and IMAGE share the remaining space on
 // resize but never shrink below minFlexWidth.
 const (
+	stateWidth   = 1
 	idWidth      = 12
-	statusWidth  = 20
-	stateWidth   = 10
+	statusWidth  = 30
 	minFlexWidth = 12
 )
 
+// The state is shown as a colored dot only, since STATUS already spells it
+// out.
 var columns = []table.Column{
+	{Title: "", Width: stateWidth},
 	{Title: "ID", Width: idWidth},
 	{Title: "NAME", Width: minFlexWidth},
 	{Title: "IMAGE", Width: minFlexWidth},
 	{Title: "STATUS", Width: statusWidth},
-	{Title: "STATE", Width: stateWidth},
 }
 
 // Model is the containers pane. It holds no client and performs no I/O.
@@ -66,9 +68,9 @@ func (m Model) SetSize(w, h int) Model {
 
 	cols := make([]table.Column, len(columns))
 	copy(cols, columns)
-	flex := innerW - idWidth - statusWidth - stateWidth - len(cols)*theme.Cell.GetHorizontalPadding()
-	cols[1].Width = max(flex/2, minFlexWidth)
-	cols[2].Width = max(flex-flex/2, minFlexWidth)
+	flex := innerW - stateWidth - idWidth - statusWidth - len(cols)*theme.Cell.GetHorizontalPadding()
+	cols[2].Width = max(flex/2, minFlexWidth)
+	cols[3].Width = max(flex-flex/2, minFlexWidth)
 
 	m.table.SetColumns(cols)
 	m.table.SetWidth(innerW)
@@ -104,7 +106,7 @@ func (m Model) SetShorts(shorts []container.Short) Model {
 	rows := make([]table.Row, len(shorts))
 	cursor := 0
 	for i, s := range shorts {
-		rows[i] = table.Row{shortID(s.ID), s.Name, s.Image, s.Status, theme.StateCell(s.State)}
+		rows[i] = row(s)
 		if s.ID == selID {
 			cursor = i
 		}
@@ -141,6 +143,18 @@ func (m Model) View() string {
 		content += "\n" + "Error: " + m.err.Error()
 	}
 	return theme.Box("Containers", m.width, content)
+}
+
+// row renders a container. Containers that aren't running are dimmed so that
+// the running ones stand out; the state dot keeps its color either way.
+func row(s container.Short) table.Row {
+	cells := []string{shortID(s.ID), s.Name, s.Image, s.Status}
+	if s.State != "running" {
+		for i, c := range cells {
+			cells[i] = theme.Dim(c)
+		}
+	}
+	return append(table.Row{theme.StateCell(s.State)}, cells...)
 }
 
 func shortID(id string) string {

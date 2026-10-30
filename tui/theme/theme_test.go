@@ -34,3 +34,17 @@ func TestBox(t *testing.T) {
 		})
 	}
 }
+
+func TestStateCell(t *testing.T) {
+	seen := map[string]string{}
+	for _, state := range []string{"running", "paused", "dead", "created", "exited"} {
+		got := StateCell(state)
+		if s := ansi.Strip(got); s != "●" {
+			t.Errorf("%s: cell text = %q, want ●", state, s)
+		}
+		if other, ok := seen[got]; ok {
+			t.Errorf("%s and %s share a color", state, other)
+		}
+		seen[got] = state
+	}
+}

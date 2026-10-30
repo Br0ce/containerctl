@@ -98,7 +98,7 @@ func (cli *Client) AllShorts(ctx context.Context) ([]container.Short, error) {
 	for _, sum := range sums {
 		shorts = append(shorts, container.Short{
 			ID:     sum.ID,
-			Name:   sum.Names[0],
+			Name:   strings.TrimPrefix(sum.Names[0], "/"),
 			Image:  sum.Image,
 			Status: sum.Status,
 			State:  string(sum.State),

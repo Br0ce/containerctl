@@ -1,6 +1,7 @@
 package containers
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -93,23 +94,89 @@ func TestSelectionBarIntact(t *testing.T) {
 	if n := strings.Count(selected, ansi.ResetStyle); n != 1 {
 		t.Errorf("selected row has %d full resets, want 1: %q", n, selected)
 	}
-	row := strings.TrimRight(ansi.Strip(selected), " ")
-	if !strings.HasSuffix(row, "running") {
-		t.Errorf("selected row = %q, want it to end with the state", row)
+	// The state dot resets the foreground to the terminal default (SGR 39),
+	// so the selection must not set a foreground of its own.
+	if n := foregrounds(selected); n != 1 {
+		t.Errorf("selected row sets %d foreground colors, want 1 (the state dot): %q", n, selected)
+	}
+	row := strings.TrimSpace(ansi.Strip(selected))
+	if !strings.HasPrefix(row, "●") || !strings.HasSuffix(row, "Up 2 hours") {
+		t.Errorf("selected row = %q, want it to start with the state dot and end with the status", row)
 	}
 }
 
-// TestStateVisible checks that STATE is never cut off and the rows span the
-// full pane width, down to the narrowest width where all columns fit.
-func TestStateVisible(t *testing.T) {
-	minWidth := idWidth + statusWidth + stateWidth + 2*minFlexWidth + 5*2 + 2
+// TestDimNotRunning checks that rows of containers that aren't running are
+// faint on every text cell but the state dot, and that a dimmed row keeps the
+// selection bar intact when selected.
+func TestDimNotRunning(t *testing.T) {
+	faint := ansi.Style{}.Faint().String()
+	m := newTestModel()
+	m, _ = m.Update(press("down")) // db, exited
+	lines := strings.Split(m.table.View(), "\n")
+	for i, s := range shorts {
+		line := lines[i+1] // line 0 is the header
+		n := strings.Count(line, faint)
+		switch {
+		case s.State == "running" && n != 0:
+			t.Errorf("%s: running row has %d faint cells, want 0: %q", s.Name, n, line)
+		case s.State != "running" && n != 4:
+			t.Errorf("%s: %s row has %d faint cells, want 4: %q", s.Name, s.State, n, line)
+		case n > 0 && strings.Index(line, faint) < strings.Index(line, "●"):
+			t.Errorf("%s: state dot is faint: %q", s.Name, line)
+		}
+	}
+	if n := strings.Count(lines[2], ansi.ResetStyle); n != 1 {
+		t.Errorf("selected dimmed row has %d full resets, want 1: %q", n, lines[2])
+	}
+}
+
+// foregrounds counts the SGR sequences in s that set a foreground color.
+func foregrounds(s string) int {
+	n := 0
+	for _, m := range sgr.FindAllStringSubmatch(s, -1) {
+		params := strings.Split(m[1], ";")
+		for i := 0; i < len(params); i++ {
+			switch params[i] {
+			case "38":
+				n++
+				// Skip the color arguments: 5;n or 2;r;g;b.
+				if i+1 < len(params) && params[i+1] == "5" {
+					i += 2
+				} else {
+					i += 4
+				}
+			case "48", "58":
+				if i+1 < len(params) && params[i+1] == "5" {
+					i += 2
+				} else {
+					i += 4
+				}
+			}
+		}
+	}
+	return n
+}
+
+var sgr = regexp.MustCompile("\x1b\\[([0-9;]*)m")
+
+// TestColumnsVisible checks that the state dot leads every row, STATUS is
+// never cut off and the rows span the full pane width, down to the narrowest
+// width where all columns fit.
+func TestColumnsVisible(t *testing.T) {
+	// The longest status Docker commonly reports.
+	unhealthy := container.Short{ID: "dddddddddddddddd", Name: "api", Image: "app", Status: "Up About a minute (unhealthy)", State: "running"}
+	rows := append([]container.Short{unhealthy}, shorts...)
+	minWidth := stateWidth + idWidth + statusWidth + 2*minFlexWidth + 5*2 + 2
 	for _, w := range []int{minWidth, 80, 100, 120, 200} {
-		m := New().SetSize(w, 10).SetShorts(shorts)
+		m := New().SetSize(w, 10).SetShorts(rows)
 		lines := strings.Split(m.table.View(), "\n")
-		for i, s := range shorts {
+		for i, s := range rows {
 			line := ansi.Strip(lines[i+1])
-			if !strings.Contains(line, s.State) {
-				t.Errorf("width %d: row %q misses state %q", w, line, s.State)
+			if !strings.HasPrefix(strings.TrimSpace(line), "●") {
+				t.Errorf("width %d: row %q doesn't start with the state dot", w, line)
+			}
+			if !strings.Contains(line, s.Status) {
+				t.Errorf("width %d: row %q misses status %q", w, line, s.Status)
 			}
 			if got := ansi.StringWidth(line); got != w-2 {
 				t.Errorf("width %d: row is %d wide, want %d", w, got, w-2)

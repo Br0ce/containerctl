@@ -22,7 +22,7 @@ func TestView(t *testing.T) {
 
 	for _, want := range []string{
 		"Docker Engine API", "unix:///var/run/docker.sock", "1.47",
-		"Info", "Running 2", "Paused 1", "Total   4",
+		"Info", "Running: 2", "Paused: 1", "Total:   4",
 	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view does not contain %q:\n%s", want, view)
@@ -32,10 +32,10 @@ func TestView(t *testing.T) {
 
 func TestViewContainer(t *testing.T) {
 	m := New("unix:///var/run/docker.sock", "1.47").SetWidth(120).SetShorts(shorts).
-		SetContainer(container.Short{Name: "/web", Image: "nginx"})
+		SetContainer(container.Short{Name: "web", Image: "nginx"})
 
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"Info", "Name    web", "Image   nginx"} {
+	for _, want := range []string{"Info", "Name:    web", "Image:   nginx"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view does not contain %q:\n%s", want, view)
 		}
@@ -48,7 +48,7 @@ func TestViewContainer(t *testing.T) {
 	}
 
 	view = ansi.Strip(m.ClearContainer().View())
-	if !strings.Contains(view, "Total   4") || strings.Contains(view, "nginx") {
+	if !strings.Contains(view, "Total:   4") || strings.Contains(view, "nginx") {
 		t.Errorf("expected counts after ClearContainer:\n%s", view)
 	}
 }
