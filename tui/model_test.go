@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -39,6 +40,9 @@ type fakeClient struct {
 	engineErr  error
 	details    container.Details
 	detailsErr error
+	stats      []container.Stats
+	statsErr   error
+	statsCtx   context.Context
 }
 
 func (f *fakeClient) AllShorts(ctx context.Context) ([]container.Short, error) {
@@ -84,6 +88,20 @@ func (f *fakeClient) Details(ctx context.Context, id string) (container.Details,
 		return container.Details{}, errors.New("unexpected container " + id)
 	}
 	return f.details, f.detailsErr
+}
+
+func (f *fakeClient) Stats(ctx context.Context, _ string) client.StatsSeq {
+	f.statsCtx = ctx
+	return func(yield func(container.Stats, error) bool) {
+		for _, st := range f.stats {
+			if !yield(st, nil) {
+				return
+			}
+		}
+		if f.statsErr != nil {
+			yield(container.Stats{}, f.statsErr)
+		}
+	}
 }
 
 func (f *fakeClient) Terminal(_ context.Context, id string, in io.Reader, out io.Writer) error {
@@ -277,7 +295,7 @@ func TestHelpToggle(t *testing.T) {
 // every page and in both help modes.
 func TestFooterFitsWidth(t *testing.T) {
 	const width = 80
-	for _, p := range []page{containersPage, logsPage, filesPage} {
+	for _, p := range []page{containersPage, logsPage, filesPage, inspectPage, statsPage} {
 		for _, all := range []bool{false, true} {
 			m := newModel(&fakeClient{shorts: shorts})
 			m, _ = update(m, tea.WindowSizeMsg{Width: width, Height: 20})
@@ -812,5 +830,110 @@ func TestInspectKeysIgnoredOnOtherPages(t *testing.T) {
 	}
 	if _, cmd := update(m, tea.KeyPressMsg{Code: 'x', Text: "x"}); cmd != nil {
 		t.Error("'x' on the inspect page must not stop a container")
+	}
+}
+
+// openStats loads the containers and presses m on the selected one.
+func openStats(t *testing.T, cli *fakeClient) (Model, tea.Cmd) {
+	t.Helper()
+	m := newModel(cli)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'm', Text: "m"})
+	if m.page != statsPage {
+		t.Fatal("expected stats page after 'm'")
+	}
+	if cmd == nil {
+		t.Fatal("expected stats command")
+	}
+	return m, cmd
+}
+
+var sample = container.Stats{
+	Read:       time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC),
+	CPUPercent: 12.5,
+	OnlineCPUs: 2,
+	MemUsage:   256 << 20,
+	MemLimit:   1 << 30,
+}
+
+func TestOpenStatsStreamsSamples(t *testing.T) {
+	m, cmd := openStats(t, &fakeClient{shorts: shorts, stats: []container.Stats{sample}})
+	got := ansi.Strip(m.View().Content)
+	for _, want := range []string{"Stats", "Name:    web", "Loading…", "esc"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("view does not contain %q: %q", want, got)
+		}
+	}
+
+	m, cmd = update(m, cmd())
+	if cmd == nil {
+		t.Fatal("expected the stream to be awaited again")
+	}
+	got = ansi.Strip(m.View().Content)
+	for _, want := range []string{"12.5%", "256 MiB / 1 GiB"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("view does not contain %q: %q", want, got)
+		}
+	}
+	if h := lipgloss.Height(got); h != 20 {
+		t.Errorf("view height = %d, want 20", h)
+	}
+
+	if msg := cmd().(statsMsg); !msg.done {
+		t.Fatal("expected the stream to end")
+	} else if _, cmd = update(m, msg); cmd != nil {
+		t.Error("ended stream must not be awaited again")
+	}
+}
+
+func TestStatsError(t *testing.T) {
+	m, cmd := openStats(t, &fakeClient{shorts: shorts, stats: []container.Stats{sample}, statsErr: errors.New("boom")})
+	for cmd != nil {
+		m, cmd = update(m, cmd())
+	}
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "Error: boom") || !strings.Contains(got, "12.5%") {
+		t.Errorf("expected the error above the last sample: %q", got)
+	}
+}
+
+func TestStatsBack(t *testing.T) {
+	cli := &fakeClient{shorts: shorts}
+	m, _ := openStats(t, cli)
+
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.page != containersPage {
+		t.Error("expected containers page after esc")
+	}
+	if cli.statsCtx.Err() == nil {
+		t.Error("expected stats stream to be canceled")
+	}
+}
+
+func TestStaleStatsDropped(t *testing.T) {
+	m, _ := openStats(t, &fakeClient{shorts: shorts})
+
+	m, cmd := update(m, statsMsg{session: m.statsSession - 1, stats: sample})
+	if cmd != nil {
+		t.Error("stale stream must not be awaited again")
+	}
+	if strings.Contains(m.View().Content, "12.5%") {
+		t.Error("view shows samples of a stale stream")
+	}
+}
+
+func TestStatsKeysIgnoredOnOtherPages(t *testing.T) {
+	m, _ := openLogs(t, &fakeClient{shorts: shorts})
+	if _, cmd := update(m, tea.KeyPressMsg{Code: 'm', Text: "m"}); cmd != nil {
+		t.Error("'m' on the logs page must not open stats")
+	}
+	m, _ = openStats(t, &fakeClient{shorts: shorts})
+	session := m.statsSession
+	if m, _ = update(m, tea.KeyPressMsg{Code: 'm', Text: "m"}); m.statsSession != session {
+		t.Error("'m' on the stats page must not start a new stream")
+	}
+	if _, cmd := update(m, tea.KeyPressMsg{Code: 'x', Text: "x"}); cmd != nil {
+		t.Error("'x' on the stats page must not stop a container")
 	}
 }

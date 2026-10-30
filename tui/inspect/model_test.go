@@ -140,20 +140,6 @@ func TestPane(t *testing.T) {
 	}
 }
 
-func TestFormatBytes(t *testing.T) {
-	for b, want := range map[int64]string{
-		512:        "512 B",
-		1024:       "1 KiB",
-		256 << 20:  "256 MiB",
-		1536 << 20: "1.5 GiB",
-		4 << 40:    "4 TiB",
-	} {
-		if got := formatBytes(b); got != want {
-			t.Errorf("formatBytes(%d) = %q, want %q", b, got, want)
-		}
-	}
-}
-
 func TestSectionTitlesFollowBackground(t *testing.T) {
 	for _, dark := range []bool{true, false} {
 		header := theme.HeaderFor(dark)

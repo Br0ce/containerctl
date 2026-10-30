@@ -14,6 +14,7 @@ var (
 	logsKey    = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "logs"))
 	filesKey   = key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "files"))
 	inspectKey = key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "inspect"))
+	statsKey   = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "stats"))
 	refreshKey = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh"))
 	termKey    = key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "terminal"))
 	startKey   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "start"))
@@ -36,14 +37,15 @@ type containersKeyMap struct {
 // ShortHelp leaves out the cursor keys, which are in the full help. On narrow
 // terminals the footer cuts off the last keys with an ellipsis.
 func (k containersKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{logsKey, inspectKey, filesKey, termKey, startKey, stopKey, restartKey, pauseKey, unpauseKey, removeKey, quitKey, helpKey}
+	return []key.Binding{logsKey, inspectKey, statsKey, filesKey, termKey, startKey, stopKey, restartKey, pauseKey, unpauseKey, removeKey, quitKey, helpKey}
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k containersKeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{logsKey, inspectKey},
-		{filesKey, termKey},
+		{statsKey, filesKey},
+		{termKey},
 		{startKey, stopKey},
 		{pauseKey, unpauseKey},
 		{restartKey, removeKey},
@@ -120,6 +122,21 @@ func (k inspectKeyMap) FullHelp() [][]key.Binding {
 		{k.inspect.PageUp, k.inspect.PageDown},
 		{k.inspect.HalfPageUp, k.inspect.HalfPageDown},
 		{k.inspect.Left, k.inspect.Right},
+		{quitKey, helpKey},
+	}
+}
+
+// statsKeyMap holds the global keys for the help footer of the stats pane,
+// which has no keys of its own.
+type statsKeyMap struct{}
+
+func (k statsKeyMap) ShortHelp() []key.Binding {
+	return []key.Binding{backKey, quitKey, helpKey}
+}
+
+func (k statsKeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{backKey},
 		{quitKey, helpKey},
 	}
 }

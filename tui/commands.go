@@ -251,3 +251,48 @@ func waitForLogs(session int, stream <-chan logItem) tea.Cmd {
 		return msg
 	}
 }
+
+type statsItem struct {
+	stats container.Stats
+	err   error
+}
+
+// statsMsg carries the next sample of a stats stream. done is set once the
+// stream has ended, after err if it failed.
+type statsMsg struct {
+	session int
+	stream  <-chan statsItem
+	stats   container.Stats
+	err     error
+	done    bool
+}
+
+// streamStats starts following the resource usage of container id in the
+// background. The stream runs until it ends or the returned cancel func is
+// called.
+func streamStats(cli Client, session int, id string) (tea.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	seq := cli.Stats(ctx, id)
+	// The daemon sends about one sample per second, so a small buffer is
+	// enough to never hold up the stream.
+	stream := make(chan statsItem, 1)
+	go func() {
+		defer close(stream)
+		for s, err := range seq {
+			select {
+			case stream <- statsItem{stats: s, err: err}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return waitForStats(session, stream), cancel
+}
+
+// waitForStats blocks until the stream has the next sample.
+func waitForStats(session int, stream <-chan statsItem) tea.Cmd {
+	return func() tea.Msg {
+		item, ok := <-stream
+		return statsMsg{session: session, stream: stream, stats: item.stats, err: item.err, done: !ok}
+	}
+}

@@ -331,7 +331,7 @@ func (r *renderer) resources(res container.Resources) {
 		return
 	}
 	if res.Memory > 0 {
-		r.field("Memory", formatBytes(res.Memory))
+		r.field("Memory", theme.Bytes(uint64(res.Memory)))
 	}
 	if res.NanoCPUs > 0 {
 		r.field("CPUs", strconv.FormatFloat(float64(res.NanoCPUs)/1e9, 'f', -1, 64))
@@ -412,19 +412,4 @@ func age(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
-}
-
-// formatBytes uses binary units with up to one decimal, e.g. "1.5 GiB".
-func formatBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	v, i := float64(b)/unit, 0
-	for v >= unit && i < 3 {
-		v /= unit
-		i++
-	}
-	s := strconv.FormatFloat(v, 'f', 1, 64)
-	return strings.TrimSuffix(s, ".0") + " " + []string{"KiB", "MiB", "GiB", "TiB"}[i]
 }

@@ -2,7 +2,9 @@
 package theme
 
 import (
+	"fmt"
 	"image/color"
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -127,4 +129,19 @@ func stateColor(state string) color.Color {
 	default:
 		return lipgloss.Color("#9CA3AF") // Light gray
 	}
+}
+
+// Bytes formats b in binary units with up to one decimal, e.g. "1.5 GiB".
+func Bytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	v, i := float64(b)/unit, 0
+	for v >= unit && i < 3 {
+		v /= unit
+		i++
+	}
+	s := strconv.FormatFloat(v, 'f', 1, 64)
+	return strings.TrimSuffix(s, ".0") + " " + []string{"KiB", "MiB", "GiB", "TiB"}[i]
 }
