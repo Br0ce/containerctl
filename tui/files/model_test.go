@@ -2,8 +2,10 @@ package files
 
 import (
 	"errors"
+	"io/fs"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -14,9 +16,10 @@ import (
 
 var listing = []file.Info{
 	{Name: "..", Path: "/", IsDir: true},
-	{Name: "etc", Path: "/app/etc", IsDir: true},
-	{Name: "app.log", Path: "/app/app.log", Size: 3 * 1024 * 1024},
-	{Name: "README", Path: "/app/README", Size: 42},
+	{Name: "etc", Path: "/app/etc", IsDir: true, Mode: fs.ModeDir | 0o755},
+	{Name: "app.log", Path: "/app/app.log", Size: 3 * 1024 * 1024, Mode: 0o640},
+	{Name: "README", Path: "/app/README", Size: 42, Mode: 0o644, ModTime: time.Now().Add(-time.Hour)},
+	{Name: "lib", Path: "/app/lib", Mode: fs.ModeSymlink | 0o777, LinkTarget: "/usr/lib"},
 }
 
 func press(k string) tea.KeyPressMsg {
@@ -35,7 +38,11 @@ func newTestModel() Model {
 
 func TestView(t *testing.T) {
 	got := ansi.Strip(newTestModel().View())
-	for _, want := range []string{"/app", "NAME", "SIZE", "..", "etc", "app.log", "3.0 MB", "README", "42 B"} {
+	for _, want := range []string{
+		"/app", "NAME", "PERMS", "SIZE", "MODIFIED",
+		"..", "etc", "drwxr-xr-x", "app.log", "-rw-r-----", "3.0 MB",
+		"README", "42 B", listing[3].ModTimeString(time.Now()), "lib -> /usr/lib", "lrwxrwxrwx",
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("view does not contain %q: %q", want, got)
 		}
@@ -49,6 +56,40 @@ func TestView(t *testing.T) {
 	}
 	if !strings.Contains(view, faint+"README") || strings.Contains(view, bold+"README") {
 		t.Errorf("file not faint: %q", view)
+	}
+}
+
+func TestColumnsDropOnNarrowTerminals(t *testing.T) {
+	tests := []struct {
+		width  int
+		hidden []string
+	}{
+		{80, nil},
+		{66, nil},
+		{65, []string{"MODIFIED"}},
+		{52, []string{"MODIFIED"}},
+		{51, []string{"MODIFIED", "PERMS"}},
+	}
+	for _, tt := range tests {
+		header := ansi.Strip(strings.Split(New().SetSize(tt.width, 10).table.View(), "\n")[0])
+		for _, title := range []string{"NAME", "PERMS", "SIZE", "MODIFIED"} {
+			hidden := false
+			for _, h := range tt.hidden {
+				hidden = hidden || h == title
+			}
+			if shown := strings.Contains(header, title); shown == hidden {
+				t.Errorf("width %d: %s shown = %v, want %v: %q", tt.width, title, shown, !hidden, header)
+			}
+		}
+	}
+}
+
+func TestNameWidthCapped(t *testing.T) {
+	for _, w := range []int{82, 200} {
+		cols := New().SetSize(w, 10).table.Columns()
+		if got := cols[0].Width; got != maxNameWidth {
+			t.Errorf("width %d: NAME is %d wide, want %d", w, got, maxNameWidth)
+		}
 	}
 }
 
@@ -66,11 +107,11 @@ func TestNavigation(t *testing.T) {
 	}{
 		{"initial", nil, ".."},
 		{"down", []string{"down"}, "etc"},
-		{"bottom", []string{"G"}, "README"},
+		{"bottom", []string{"G"}, "lib"},
 		{"top", []string{"G", "g"}, ".."},
 		// f and u are reserved for container actions and must not page.
 		{"f does not page", []string{"f"}, ".."},
-		{"u does not page", []string{"G", "u"}, "README"},
+		{"u does not page", []string{"G", "u"}, "lib"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

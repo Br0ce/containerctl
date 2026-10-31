@@ -1,6 +1,8 @@
 package files
 
 import (
+	"time"
+
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -10,13 +12,25 @@ import (
 	"github.com/Br0ce/containerctl/tui/theme"
 )
 
-// sizeWidth fits the longest size string, e.g. "1023.9 MB". NAME takes the
-// remaining space.
-const sizeWidth = 10
+// column is a table column. NAME takes the remaining space up to
+// maxNameWidth; columns with a drop rank are hidden on narrow terminals,
+// lowest rank first, so that NAME keeps at least minNameWidth.
+type column struct {
+	title string
+	width int
+	drop  int
+}
 
-var columns = []table.Column{
-	{Title: "NAME"},
-	{Title: "SIZE", Width: sizeWidth},
+const (
+	minNameWidth = 24
+	maxNameWidth = 40
+)
+
+var columns = []column{
+	{title: "NAME"},
+	{title: "PERMS", width: 10, drop: 2},    // "drwxr-xr-x"
+	{title: "SIZE", width: 10},              // "1023.9 MB"
+	{title: "MODIFIED", width: 12, drop: 1}, // "Oct 12 14:03"
 }
 
 // Model is the files pane. It holds no client and performs no I/O; listings
@@ -32,7 +46,7 @@ type Model struct {
 
 func New() Model {
 	t := table.New(
-		table.WithColumns(columns),
+		table.WithColumns(layout(0)),
 		table.WithFocused(true),
 		table.WithKeyMap(keyMap()),
 		table.WithStyles(styles(theme.Header, theme.Selected)),
@@ -70,15 +84,33 @@ func keyMap() table.KeyMap {
 func (m Model) SetSize(w, h int) Model {
 	innerW := max(w-theme.BoxFrameWidth, 0)
 
-	cols := make([]table.Column, len(columns))
-	copy(cols, columns)
-	cols[0].Width = max(innerW-sizeWidth-len(cols)*theme.Cell.GetHorizontalPadding(), 0)
-
-	m.table.SetColumns(cols)
+	m.table.SetColumns(layout(innerW))
 	m.table.SetWidth(innerW)
 	m.width = w
 	m.innerH = max(h-theme.BoxFrameHeight, 0)
 	return m.fitTable()
+}
+
+// layout sizes the columns for the inner width w, giving hidden columns a
+// width of 0, which the table skips.
+func layout(w int) []table.Column {
+	pad := theme.Cell.GetHorizontalPadding()
+	cols := make([]table.Column, len(columns))
+	for dropped := 0; ; dropped++ {
+		rest := w
+		for i, c := range columns {
+			cols[i] = table.Column{Title: c.title}
+			if c.drop > 0 && c.drop <= dropped {
+				continue
+			}
+			cols[i].Width = c.width
+			rest -= c.width + pad
+		}
+		cols[0].Width = min(max(rest, 0), maxNameWidth)
+		if rest >= minNameWidth || dropped >= len(columns) {
+			return cols
+		}
+	}
 }
 
 // fitTable leaves room for the error line below the table.
@@ -99,13 +131,10 @@ func (m Model) Start() Model {
 // SetFiles replaces the listing with the contents of directory path and
 // clears any error.
 func (m Model) SetFiles(path string, files []file.Info) Model {
+	now := time.Now()
 	rows := make([]table.Row, len(files))
 	for i, f := range files {
-		name := theme.FileCell(f.Name)
-		if f.IsDir {
-			name = theme.DirCell(f.Name)
-		}
-		rows[i] = table.Row{name, f.SizeString()}
+		rows[i] = row(f, now)
 	}
 	m.files = files
 	m.path = path
@@ -113,6 +142,22 @@ func (m Model) SetFiles(path string, files []file.Info) Model {
 	m.table.SetRows(rows)
 	m.table.SetCursor(0)
 	return m.fitTable()
+}
+
+// row renders f with one cell per column. The parent entry ".." shows only
+// its name.
+func row(f file.Info, now time.Time) table.Row {
+	if f.Name == ".." {
+		return table.Row{theme.DirCell(f.Name), "", "", ""}
+	}
+	name := theme.FileCell(f.Name)
+	switch {
+	case f.IsDir:
+		name = theme.DirCell(f.Name)
+	case f.IsSymlink():
+		name = theme.FileCell(f.Name + " -> " + f.LinkTarget)
+	}
+	return table.Row{name, f.PermString(), f.SizeString(), f.ModTimeString(now)}
 }
 
 // SetErr shows err below the listing, which is kept so the user can still
