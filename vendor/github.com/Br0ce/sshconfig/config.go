@@ -16,6 +16,9 @@ import (
 // READCONF_MAX_DEPTH.
 const defaultMaxIncludeDepth = 16
 
+// maxLineLength is the longest line read, far above what any keyword needs.
+const maxLineLength = 1 << 20
+
 // Config is a parsed ssh config file with its Include directives already read.
 type Config struct {
 	home            string
@@ -98,6 +101,11 @@ func Decode(r io.Reader, opts ...Option) (*Config, error) {
 
 // DecodeFile parses the ssh config file at path. If it does not exist, the error wraps
 // fs.ErrNotExist.
+//
+// Relative Include paths resolve against the directory of path, so a config and the files it
+// includes can be kept together. This differs from ssh -F, which resolves them against
+// ~/.ssh: for a file outside ~/.ssh, pass WithIncludeDir with ~/.ssh to read the same files
+// as ssh. An Include that matches no file is skipped without an error, in both cases.
 func DecodeFile(path string, opts ...Option) (*Config, error) {
 	c, err := newConfig(opts)
 	if err != nil {
@@ -134,11 +142,6 @@ func (c *Config) decodeOptional(path string) (*Config, error) {
 	return cfg, err
 }
 
-// Lookup returns the values that apply when connecting to alias.
-func (c *Config) Lookup(alias string) Values {
-	return Lookup(alias, c)
-}
-
 // decodePath parses the file at path into c. Relative includes resolve against the file's
 // directory unless WithIncludeDir was given.
 func (c *Config) decodePath(path string) (*Config, error) {
@@ -157,7 +160,9 @@ func (c *Config) decodePath(path string) (*Config, error) {
 // nesting depth.
 func (c *Config) decode(r io.Reader, name string, depth int) (*Config, error) {
 	sc := bufio.NewScanner(r)
-	for n := 1; sc.Scan(); n++ {
+	sc.Buffer(nil, maxLineLength)
+	n := 1
+	for ; sc.Scan(); n++ {
 		key, args, err := splitLine(sc.Text())
 		if err != nil {
 			return nil, &ParseError{File: name, Line: n, Err: err}
@@ -181,6 +186,9 @@ func (c *Config) decode(r io.Reader, name string, depth int) (*Config, error) {
 		c.lines = append(c.lines, l)
 	}
 	if err := sc.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return nil, &ParseError{File: name, Line: n, Err: errors.New("line too long")}
+		}
 		return nil, fmt.Errorf("read ssh config: %w", err)
 	}
 	return c, nil

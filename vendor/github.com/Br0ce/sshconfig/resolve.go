@@ -65,7 +65,7 @@ func (r *resolver) match(args []string) bool {
 // expanded, or the alias if none is set yet.
 func (r *resolver) hostname() string {
 	if v := r.values["hostname"]; len(v) > 0 {
-		if host, err := ExpandTokens(v[0], map[byte]string{'h': r.alias}); err == nil {
+		if host, err := expandTokens(v[0], map[byte]string{'h': r.alias}); err == nil {
 			return host
 		}
 	}

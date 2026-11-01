@@ -6,8 +6,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Br0ce/containerctl/sshconfig"
+	"github.com/Br0ce/sshconfig"
 )
+
+// localAs mocks the local user for token and ~ expansion, with cfg's ssh directory in its
+// home, so the tests don't depend on the user running them.
+func localAs(cfg *Config) sshconfig.LookupOption {
+	return sshconfig.WithLocalAs(sshconfig.Local{
+		User:     "max",
+		Home:     filepath.Dir(cfg.sshDir),
+		UID:      "1000",
+		Hostname: "laptop.example.org",
+	})
+}
 
 // newTestConfig returns the Config for opts with its ssh directory in a temp dir, where
 // ~/.ssh/config has the given content.
@@ -30,7 +41,7 @@ func newTestConfig(t *testing.T, sshConfig string, opts ...ClientOptions) *Confi
 func TestRewriteFromSSHConfig(t *testing.T) {
 	content := "Host myalias\n  HostName real.example.com\n  Port 2222\n  User alice\n"
 	cfg := newTestConfig(t, content, WithHost("myalias"))
-	if err := cfg.rewriteFromSSHConfig(); err != nil {
+	if err := cfg.rewriteFromSSHConfig(localAs(cfg)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,8 +59,7 @@ func TestRewriteFromSSHConfig(t *testing.T) {
 func TestRewriteFromSSHConfigTokens(t *testing.T) {
 	content := "Host prod-*\n  HostName %h.corp.example.com\n  User %u\n  IdentityFile ~/.ssh/%h_%r_key\n"
 	cfg := newTestConfig(t, content, WithHost("prod-api"))
-	cfg.local.User = "max"
-	if err := cfg.rewriteFromSSHConfig(); err != nil {
+	if err := cfg.rewriteFromSSHConfig(localAs(cfg)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -106,7 +116,7 @@ func TestRewriteFromSSHConfigCommandLineWins(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := newTestConfig(t, content, tt.opts...)
-			if err := cfg.rewriteFromSSHConfig(); err != nil {
+			if err := cfg.rewriteFromSSHConfig(localAs(cfg)); err != nil {
 				t.Fatal(err)
 			}
 			if got := cfg.Addr(); got != tt.wantAddr {
@@ -129,7 +139,7 @@ func TestRewriteFromSSHConfigCommandLineWins(t *testing.T) {
 func TestRewriteFromSSHConfigCommandLineTokens(t *testing.T) {
 	content := "Host myalias\n  Port 2222\n  User alice\n  IdentityFile ~/.ssh/%r_%p_key\n"
 	cfg := newTestConfig(t, content, WithHost("bob@myalias:2022"))
-	if err := cfg.rewriteFromSSHConfig(); err != nil {
+	if err := cfg.rewriteFromSSHConfig(localAs(cfg)); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := cfg.identityFile, filepath.Join(cfg.sshDir, "bob_2022_key"); got != want {
@@ -167,7 +177,7 @@ func TestRewriteFromSystemSSHConfig(t *testing.T) {
 			cfg := newTestConfig(t, userContent, WithHost(tt.host))
 			cfg.systemSSHConfig = tt.systemConfig
 			defaultUser := cfg.Username()
-			if err := cfg.rewriteFromSSHConfig(); err != nil {
+			if err := cfg.rewriteFromSSHConfig(localAs(cfg)); err != nil {
 				t.Fatal(err)
 			}
 			if got := cfg.Addr(); got != tt.wantAddr {
@@ -228,7 +238,7 @@ func TestReadSSHConfigs(t *testing.T) {
 			cfg.sshDir = sshDir
 			cfg.systemSSHConfig = tt.systemConfig
 
-			configs, err := cfg.readSSHConfigs()
+			userCfg, systemCfg, err := cfg.readSSHConfigs()
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Errorf("readSSHConfigs() error = %v, want it to contain %q", err, tt.wantErr)
@@ -238,8 +248,9 @@ func TestReadSSHConfigs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("readSSHConfigs() error = %v", err)
 			}
-			if got := sshconfig.Lookup("myalias", configs...).Get("HostName"); got != tt.wantHostName {
-				t.Errorf("HostName = %q, want %q", got, tt.wantHostName)
+			vals := sshconfig.Lookup("myalias", sshconfig.WithUserConfig(userCfg), sshconfig.WithSystemConfig(systemCfg))
+			if got, err := vals.Get("HostName"); err != nil || got != tt.wantHostName {
+				t.Errorf("HostName = %q, %v, want %q", got, err, tt.wantHostName)
 			}
 		})
 	}

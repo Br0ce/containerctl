@@ -7,9 +7,10 @@ import (
 	"os"
 	"os/user"
 	"strings"
+	"sync"
 )
 
-// Local describes the local side of a connection for token expansion.
+// Local describes the local side of a connection for token expansion, see WithLocalAs.
 type Local struct {
 	User     string // %u, and %r if no User is set
 	Home     string // %d, and ~ in paths
@@ -17,8 +18,9 @@ type Local struct {
 	Hostname string // %l, and up to the first '.' %L
 }
 
-// LocalEnv returns the current user and host.
-func LocalEnv() (Local, error) {
+// localEnv returns the current user and host. It is a variable so tests can count the
+// calls.
+var localEnv = func() (Local, error) {
 	u, err := user.Current()
 	if err != nil {
 		return Local{}, fmt.Errorf("current user: %w", err)
@@ -65,26 +67,48 @@ var tildeKeywords = map[string]bool{
 	"userknownhostsfile": true,
 }
 
+// localSide is the local side of a connection, read on first use and shared by the copies
+// of a Values.
+type localSide struct {
+	read  func() (Local, error)
+	once  sync.Once
+	local Local
+	err   error
+}
+
+func (ls *localSide) get() (Local, error) {
+	if ls == nil {
+		return Local{}, nil
+	}
+	ls.once.Do(func() {
+		ls.local, ls.err = ls.read()
+	})
+	return ls.local, ls.err
+}
+
 // expand expands the value v of the lowercased keyword key.
-func (vs Values) expand(key, v string, local Local) (string, error) {
+func (vs Values) expand(key, v string) (string, error) {
 	if vs.set[key] {
 		return v, nil
 	}
+	var err error
 	if tildeKeywords[key] {
-		v = expandTilde(key, v, local.Home)
+		if v, err = vs.expandTilde(key, v); err != nil {
+			return "", fmt.Errorf("%s: %w", key, err)
+		}
 	}
 	allowed, ok := keywordTokens[key]
 	if !ok {
 		return v, nil
 	}
-	v, err := expand(v, func(c byte) (string, error) {
+	v, err = expand(v, func(c byte) (string, error) {
 		if strings.IndexByte(allowed, c) < 0 {
 			return "", fmt.Errorf("token %%%c not supported", c)
 		}
 		if key == "hostname" {
 			return vs.alias, nil // only %h
 		}
-		return vs.token(c, local)
+		return vs.token(c)
 	})
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", key, err)
@@ -93,84 +117,98 @@ func (vs Values) expand(key, v string, local Local) (string, error) {
 }
 
 // expandTilde replaces a leading ~ in v, or in each of its paths for UserKnownHostsFile,
-// with home.
-func expandTilde(key, v, home string) string {
-	tilde := func(p string) string {
-		if p == "~" || strings.HasPrefix(p, "~/") {
-			return home + p[1:]
-		}
-		return p
+// with the local home directory.
+func (vs Values) expandTilde(key, v string) (string, error) {
+	paths := []string{v}
+	if key == "userknownhostsfile" {
+		paths = strings.Split(v, " ")
 	}
-	if key != "userknownhostsfile" {
-		return tilde(v)
-	}
-	paths := strings.Split(v, " ")
 	for i, p := range paths {
-		paths[i] = tilde(p)
+		if p != "~" && !strings.HasPrefix(p, "~/") {
+			continue
+		}
+		home, err := vs.localValue("home directory", func(l Local) string { return l.Home })
+		if err != nil {
+			return "", fmt.Errorf("%q: ~: %w", v, err)
+		}
+		paths[i] = home + p[1:]
 	}
-	return strings.Join(paths, " ")
+	return strings.Join(paths, " "), nil
+}
+
+// localValue returns the field of the local side selected by field, described by name, or an
+// error if it is not known.
+func (vs Values) localValue(name string, field func(Local) string) (string, error) {
+	l, err := vs.local.get()
+	if err != nil {
+		return "", err
+	}
+	if v := field(l); v != "" {
+		return v, nil
+	}
+	return "", fmt.Errorf("local %s not known, see WithLocalAs", name)
 }
 
 // token returns the value of the token c.
-func (vs Values) token(c byte, local Local) (string, error) {
+func (vs Values) token(c byte) (string, error) {
 	switch c {
 	case 'C':
-		return vs.connectionHash(local)
+		return vs.connectionHash()
 	case 'd':
-		return local.Home, nil
+		return vs.localValue("home directory", func(l Local) string { return l.Home })
 	case 'h':
-		v, err := vs.Expand("hostname", local)
+		v, err := vs.Get("hostname")
 		if err != nil || v != "" {
 			return v, err
 		}
 		return vs.alias, nil
 	case 'i':
-		return local.UID, nil
+		return vs.localValue("user ID", func(l Local) string { return l.UID })
 	case 'j':
 		return vs.proxyJump(), nil
 	case 'k':
-		if v := vs.Get("hostkeyalias"); v != "" {
+		if v := vs.GetRaw("hostkeyalias"); v != "" {
 			return v, nil
 		}
 		return vs.alias, nil
 	case 'L':
-		short, _, _ := strings.Cut(local.Hostname, ".")
-		return short, nil
+		host, err := vs.localValue("host name", func(l Local) string { return l.Hostname })
+		short, _, _ := strings.Cut(host, ".")
+		return short, err
 	case 'l':
-		return local.Hostname, nil
+		return vs.localValue("host name", func(l Local) string { return l.Hostname })
 	case 'n':
 		return vs.alias, nil
 	case 'p':
-		if v := vs.Get("port"); v != "" {
+		if v := vs.GetRaw("port"); v != "" {
 			return v, nil
 		}
 		return "22", nil
 	case 'r':
-		v, err := vs.Expand("user", local)
+		v, err := vs.Get("user")
 		if err != nil || v != "" {
 			return v, err
 		}
-		return local.User, nil
+		return vs.localValue("user", func(l Local) string { return l.User })
 	case 'u':
-		return local.User, nil
+		return vs.localValue("user", func(l Local) string { return l.User })
 	}
 	return "", fmt.Errorf("token %%%c not supported", c)
 }
 
 // proxyJump returns the ProxyJump in effect, or "" if it is unset or none.
 func (vs Values) proxyJump() string {
-	if v := vs.Get("proxyjump"); !strings.EqualFold(v, "none") {
+	if v := vs.GetRaw("proxyjump"); !strings.EqualFold(v, "none") {
 		return v
 	}
 	return ""
 }
 
 // connectionHash returns %C, the SHA-1 hash of %l%h%p%r%j in hex.
-func (vs Values) connectionHash(local Local) (string, error) {
+func (vs Values) connectionHash() (string, error) {
 	var b strings.Builder
-	b.WriteString(local.Hostname)
-	for _, c := range []byte("hpr") {
-		v, err := vs.token(c, local)
+	for _, c := range []byte("lhpr") {
+		v, err := vs.token(c)
 		if err != nil {
 			return "", err
 		}
@@ -181,10 +219,9 @@ func (vs Values) connectionHash(local Local) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// ExpandTokens replaces the %-tokens in s, e.g. %h, with their values from tokens and %%
-// with a single %. An unknown token or a trailing % is an error. Values.Expand knows which
-// tokens each keyword accepts and derives their values.
-func ExpandTokens(s string, tokens map[byte]string) (string, error) {
+// expandTokens replaces the %-tokens in s, e.g. %h, with their values from tokens and %%
+// with a single %. An unknown token or a trailing % is an error.
+func expandTokens(s string, tokens map[byte]string) (string, error) {
 	return expand(s, func(c byte) (string, error) {
 		v, ok := tokens[c]
 		if !ok {

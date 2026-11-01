@@ -57,6 +57,7 @@ or Apache 2.0). Full license texts are available in the vendor/ directory.
   charm.land/bubbles/v2                   MIT     Copyright (c) 2020-2026 Charmbracelet, Inc.
   charm.land/bubbletea/v2                 MIT     Copyright (c) 2020-2026 Charmbracelet, Inc.
   charm.land/lipgloss/v2                  MIT     Copyright (c) 2021-2026 Charmbracelet, Inc.
+  github.com/Br0ce/sshconfig              MIT     Copyright (c) 2026 Niklas Beck
   github.com/Microsoft/go-winio           MIT     Copyright (c) 2015 Microsoft
   github.com/cespare/xxhash/v2            MIT     Copyright (c) 2016 Caleb Spare
   github.com/charmbracelet/colorprofile   MIT     Copyright (c) 2020-2024 Charmbracelet, Inc.

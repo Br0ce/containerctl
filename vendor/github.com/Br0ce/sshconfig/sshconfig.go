@@ -7,15 +7,17 @@
 // system-wide one. Other Match criteria (e.g. exec, user, canonical) are not supported: a
 // Match block using them never matches.
 //
-// UserConfig and SystemConfig read the standard files, Lookup resolves an alias against them
-// and Values.Expand applies the token and tilde expansion OpenSSH does for each keyword:
+// UserConfig and SystemConfig read the standard files, and Lookup resolves an alias against
+// them. Get returns a value with the token and tilde expansion OpenSSH does for its keyword,
+// GetRaw as written in the config:
 //
 //	user, err := sshconfig.UserConfig()
 //	...
 //	system, err := sshconfig.SystemConfig()
 //	...
-//	local, err := sshconfig.LocalEnv()
-//	...
-//	vals := sshconfig.Lookup("web", user, system)
-//	identityFiles, err := vals.ExpandAll("IdentityFile", local)
+//	vals := sshconfig.Lookup("web",
+//		sshconfig.WithUserConfig(user),
+//		sshconfig.WithSystemConfig(system),
+//	)
+//	identityFiles, err := vals.GetAll("IdentityFile")
 package sshconfig
