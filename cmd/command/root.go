@@ -11,11 +11,12 @@ import (
 )
 
 var (
-	host         string
-	dockerhost   string
-	username     string
-	identityFile string
-	askPassword  bool
+	host            string
+	dockerhost      string
+	username        string
+	identityFile    string
+	askPassword     bool
+	systemSSHConfig bool
 
 	rootCmd = &cobra.Command{
 		Use:     "cctl",
@@ -34,11 +35,13 @@ Behavior:
 	3. The default unix socket (unix:///var/run/docker.sock).
   - If --host is provided, the connection is done securely over SSH.
 	- Host key verification is enforced using your known_hosts file.
-	  If a ~/.ssh/config entry for host, username or port is found, it is used and overrides the
-	  corresponding values provided by the command line arguments.
+	- The ~/.ssh/config entry for host is read like OpenSSH does, including Include, Match host and
+	  tokens such as %h. With --system-ssh-config, /etc/ssh/ssh_config is read afterwards; the first
+	  value found wins. HostName replaces the host, while Port, User and IdentityFile are only used
+	  if not given on the command line.
 	- The username for SSH authentication is determined in the following order of precedence:
-		1. --username argument
-		2. username embedded in host as user@hostname
+		1. --username argument, or the username embedded in host as user@hostname (not both)
+		2. User from the ssh config
 		3. If no username is provided the current system user is used.
 	- Authentication is attempted in the following order:
 		1. If --ask-password is set, the user is prompted for their SSH password. This option takes precedence.
@@ -70,11 +73,12 @@ Examples:
   `,
 		Run: func(cmd *cobra.Command, args []string) {
 			cfg := tui.Config{
-				Host:         host,
-				DockerHost:   dockerhost,
-				Username:     username,
-				IdentityFile: identityFile,
-				AskPassword:  askPassword,
+				Host:            host,
+				DockerHost:      dockerhost,
+				Username:        username,
+				IdentityFile:    identityFile,
+				AskPassword:     askPassword,
+				SystemSSHConfig: systemSSHConfig,
 			}
 			ui, err := tui.New(cfg)
 			if err != nil {
@@ -99,10 +103,11 @@ Examples:
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&host, "host", "localhost", "Docker host to connect to, e.g. hostname, username@hostname, hostname:port.")
-	rootCmd.PersistentFlags().StringVar(&username, "username", "", "Username for SSH authentication. Overrides username in host if both are provided.")
+	rootCmd.PersistentFlags().StringVar(&username, "username", "", "Username for SSH authentication. Cannot be combined with a username in host.")
 	rootCmd.PersistentFlags().StringVar(&identityFile, "identity-file", "", "Private SSH key to use for authentication. Must be inside the ~/.ssh directory.")
 	rootCmd.PersistentFlags().StringVar(&dockerhost, "docker-host", "", "Docker API socket to connect to, on the remote host if --host is provided. Defaults to DOCKER_HOST locally and /var/run/docker.sock remotely.")
 	rootCmd.PersistentFlags().BoolVar(&askPassword, "ask-password", false, "Prompt for SSH password authentication")
+	rootCmd.PersistentFlags().BoolVar(&systemSSHConfig, "system-ssh-config", false, "Also read /etc/ssh/ssh_config after ~/.ssh/config.")
 }
 
 func Execute() {

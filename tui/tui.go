@@ -15,6 +15,8 @@ type Config struct {
 	Username     string
 	IdentityFile string
 	AskPassword  bool
+	// SystemSSHConfig enables reading /etc/ssh/ssh_config after ~/.ssh/config.
+	SystemSSHConfig bool
 }
 
 type UI struct {
@@ -43,6 +45,9 @@ func New(cfg Config) (*UI, error) {
 	}
 	if cfg.AskPassword {
 		opts = append(opts, client.WithAskPassword(true))
+	}
+	if cfg.SystemSSHConfig {
+		opts = append(opts, client.WithSystemSSHConfig(true))
 	}
 
 	cli, err := client.New(opts...)

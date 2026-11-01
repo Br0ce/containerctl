@@ -267,8 +267,12 @@ func (cli *Client) filesIn(ctx context.Context, root file.Info) ([]file.Info, er
 	defer res.Content.Close()
 
 	// The Tar stream contains the working directory as its first entry, followed by its contents in “deep-first” order.
-	tr := tar.NewReader(res.Content)
+	return listDir(tar.NewReader(res.Content), root)
+}
 
+// listDir returns the immediate children of the directory archived in tr,
+// which CopyFromContainer returned for root.
+func listDir(tr *tar.Reader, root file.Info) ([]file.Info, error) {
 	// The first entry in the tar stream is the working directory, skip it.
 	start, err := tr.Next()
 	if err != nil {
@@ -291,6 +295,10 @@ func (cli *Client) filesIn(ctx context.Context, root file.Info) ([]file.Info, er
 		})
 	}
 
+	// Hard links carry no data and a size of 0 in the tar stream; their
+	// target always comes earlier, so its size is looked up here.
+	sizes := make(map[string]int64)
+
 	for {
 		entry, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -300,21 +308,35 @@ func (cli *Client) filesIn(ctx context.Context, root file.Info) ([]file.Info, er
 			return nil, fmt.Errorf("read tar: %w", err)
 		}
 
+		name := filepath.Clean(entry.Name)
+		size := entry.Size
+		switch entry.Typeflag {
+		case tar.TypeReg:
+			sizes[name] = size
+		case tar.TypeLink:
+			size = sizes[filepath.Clean(entry.Linkname)]
+		}
+
 		// Only include immediate children of the working directory.
-		dir := filepath.Dir(filepath.Clean(entry.Name))
-		if workdir != dir {
+		if workdir != filepath.Dir(name) {
 			continue
 		}
 
 		fi := entry.FileInfo()
-		files = append(files, file.Info{
+		info := file.Info{
 			Name:        fi.Name(),
 			Path:        filepath.Join(root.Path, fi.Name()),
 			IsDir:       fi.IsDir(),
 			ContainerID: root.ContainerID,
 			DisplayName: root.Path,
-			Size:        fi.Size(),
-		})
+			Size:        size,
+			Mode:        fi.Mode(),
+			ModTime:     entry.ModTime,
+		}
+		if entry.Typeflag == tar.TypeSymlink {
+			info.LinkTarget = entry.Linkname
+		}
+		files = append(files, info)
 	}
 }
 

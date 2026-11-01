@@ -17,7 +17,8 @@ import (
 
 // NewSSHClient creates a new SSH client from the given config.
 //
-// Settings from ~/.ssh/config are applied first, overriding any values in cfg.
+// Settings from ~/.ssh/config, and /etc/ssh/ssh_config if enabled, are applied first. They
+// fill in the host name, port, username and identity file unless given on the command line.
 // Host keys are verified against ~/.ssh/known_hosts.
 //
 // Authentication is attempted in order:
@@ -30,13 +31,9 @@ func NewSSHClient(cfg *Config) (*ssh.Client, error) {
 		return nil, fmt.Errorf("get host key callback: %w", err)
 	}
 
-	// Apply ~/.ssh/config overrides before any auth decisions.
-	cfgFile, err := os.OpenInRoot(cfg.sshDir, "config")
-	if err == nil {
-		defer cfgFile.Close()
-		if err := cfg.rewriteFromSSHConfig(cfgFile); err != nil {
-			return nil, fmt.Errorf("rewrite from ssh config: %w", err)
-		}
+	// Apply the ssh config before any auth decisions.
+	if err := cfg.rewriteFromSSHConfig(); err != nil {
+		return nil, fmt.Errorf("rewrite from ssh config: %w", err)
 	}
 
 	baseCfg := ssh.ClientConfig{

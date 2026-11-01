@@ -57,7 +57,7 @@ The footer shows the keys available in the current view.
 
 When `--host` is provided, containerctl connects to the remote Docker Engine API over SSH, tunneling all API calls through the connection. No manual SSH session is needed.
 
-The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read and its values take precedence over command-line arguments. Host keys are verified against `~/.ssh/known_hosts`. Authentication follows the same order as OpenSSH — password prompt, SSH agent (`SSH_AUTH_SOCK`), or a private key file, with a passphrase prompt if the key is encrypted. A key given with `--identity-file` must be inside `~/.ssh`.
+The SSH behavior is designed to mirror OpenSSH: `~/.ssh/config` is read with `Include`, `Match host` and tokens such as `%h`, and with `--system-ssh-config` also `/etc/ssh/ssh_config`. `HostName` replaces the host, while a username, port or identity file given on the command line takes precedence over the config. Host keys are verified against `~/.ssh/known_hosts`. Authentication follows the same order as OpenSSH — password prompt, SSH agent (`SSH_AUTH_SOCK`), or a private key file, with a passphrase prompt if the key is encrypted. A key given with `--identity-file` must be inside `~/.ssh`.
 
 ## Docker socket
 
