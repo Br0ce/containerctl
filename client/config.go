@@ -24,7 +24,8 @@ type Config struct {
 	identityFile string
 	askPwd       bool
 	sshDir       string
-	localUser    string
+	// local is the local user and host for token expansion. Its Home is derived from sshDir.
+	local sshconfig.Local
 	// systemSSHConfig is the path of the system-wide ssh config, or "" if it is not read.
 	systemSSHConfig string
 	// portSet and usernameSet are true if the port or username were given on the command
@@ -110,7 +111,9 @@ func NewConfig(opts ...ClientOptions) (*Config, error) {
 		return nil, fmt.Errorf("get current user: %w", err)
 	}
 	cfg.sshDir = filepath.Join(curUser.HomeDir, ".ssh")
-	cfg.localUser = curUser.Username
+	// The hostname is only needed for %l, %L and %C, so a failure just leaves it empty.
+	hostname, _ := os.Hostname()
+	cfg.local = sshconfig.Local{User: curUser.Username, UID: curUser.Uid, Hostname: hostname}
 
 	if cfg.username != "" && u.User.Username() != "" {
 		return nil, fmt.Errorf("username provided in both host and argument")
@@ -187,44 +190,23 @@ func (cfg *Config) openIdentityFile() (*os.File, error) {
 // readSSHConfigs reads ~/.ssh/config and, if enabled, the system-wide ssh config, in the
 // order OpenSSH reads them. A config that does not exist is skipped.
 //
-// It returns an error if a config exists but cannot be opened or parsed, e.g. if
-// ~/.ssh/config is a symlink outside ~/.ssh.
+// It returns an error if a config exists but cannot be read or parsed.
 func (cfg *Config) readSSHConfigs() ([]*sshconfig.Config, error) {
 	home := filepath.Dir(cfg.sshDir)
-	var configs []*sshconfig.Config
 
-	userPath := filepath.Join(cfg.sshDir, "config")
-	userFile, err := os.OpenInRoot(cfg.sshDir, "config")
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-	case err != nil:
-		if info, lerr := os.Lstat(userPath); lerr == nil && info.Mode()&fs.ModeSymlink != 0 {
-			return nil, fmt.Errorf("open %s: %w (a symlink outside ~/.ssh is not supported)", userPath, err)
-		}
-		return nil, fmt.Errorf("open %s: %w", userPath, err)
-	default:
-		defer userFile.Close()
-		userCfg, err := sshconfig.Decode(userFile, sshconfig.WithHome(home))
-		if err != nil {
-			return nil, fmt.Errorf("decode %s: %w", userPath, err)
-		}
-		configs = append(configs, userCfg)
+	userCfg, err := sshconfig.UserConfig(sshconfig.WithHome(home))
+	if err != nil {
+		return nil, fmt.Errorf("read ssh config: %w", err)
 	}
+	configs := []*sshconfig.Config{userCfg}
 
 	if cfg.systemSSHConfig != "" {
-		// Not os.OpenInRoot: some distros (e.g. NixOS) make the system config a symlink
-		// outside /etc/ssh, which it would refuse.
-		systemFile, err := os.Open(cfg.systemSSHConfig)
+		systemCfg, err := sshconfig.DecodeFile(cfg.systemSSHConfig, sshconfig.WithHome(home))
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 		case err != nil:
-			return nil, fmt.Errorf("open %s: %w", cfg.systemSSHConfig, err)
+			return nil, fmt.Errorf("read system ssh config: %w", err)
 		default:
-			defer systemFile.Close()
-			systemCfg, err := sshconfig.Decode(systemFile, sshconfig.WithHome(home), sshconfig.WithIncludeDir(filepath.Dir(cfg.systemSSHConfig)))
-			if err != nil {
-				return nil, fmt.Errorf("decode %s: %w", cfg.systemSSHConfig, err)
-			}
 			configs = append(configs, systemCfg)
 		}
 	}
@@ -234,49 +216,51 @@ func (cfg *Config) readSSHConfigs() ([]*sshconfig.Config, error) {
 
 // rewriteFromSSHConfig rewrites the host, username, port and identity file from ~/.ssh/config
 // and, if enabled, the system-wide ssh config. Tokens such as %h are expanded like OpenSSH
-// does for each keyword. A username, port or identity file given on the command line is kept.
+// does for each keyword. A username, port or identity file given on the command line is kept,
+// and %p and %r use it.
 //
-// It returns an error if a config cannot be parsed or a value has an unknown token.
+// It returns an error if a config cannot be parsed or a value has an unsupported token.
 func (cfg *Config) rewriteFromSSHConfig() error {
 	configs, err := cfg.readSSHConfigs()
 	if err != nil {
 		return err
 	}
 
-	home := filepath.Dir(cfg.sshDir)
 	alias := cfg.host
 	vals := sshconfig.Lookup(alias, configs...)
+	if cfg.portSet {
+		vals = vals.Set("Port", cfg.port)
+	}
+	if cfg.usernameSet {
+		vals = vals.Set("User", cfg.username)
+	}
+	local := cfg.local
+	local.Home = filepath.Dir(cfg.sshDir)
 
-	if v := vals.Get("HostName"); v != "" {
-		host, err := sshconfig.ExpandTokens(v, map[byte]string{'h': alias})
-		if err != nil {
-			return fmt.Errorf("ssh config HostName for %s: %w", alias, err)
-		}
+	host, err := vals.Expand("HostName", local)
+	if err != nil {
+		return fmt.Errorf("ssh config for %s: %w", alias, err)
+	}
+	if host != "" {
 		cfg.host = host
 	}
 
-	if v := vals.Get("Port"); !cfg.portSet && v != "" {
-		cfg.port = v
+	if port := vals.Get("Port"); port != "" {
+		cfg.port = port
 	}
 
-	if v := vals.Get("User"); !cfg.usernameSet && v != "" {
-		username, err := sshconfig.ExpandTokens(v, map[byte]string{
-			'h': cfg.host, 'n': alias, 'p': cfg.port, 'u': cfg.localUser,
-		})
-		if err != nil {
-			return fmt.Errorf("ssh config User for %s: %w", alias, err)
-		}
+	username, err := vals.Expand("User", local)
+	if err != nil {
+		return fmt.Errorf("ssh config for %s: %w", alias, err)
+	}
+	if username != "" {
 		cfg.username = username
 	}
 
-	if v := vals.Get("IdentityFile"); cfg.identityFile == "" && v != "" {
-		identityFile, err := sshconfig.ExpandTokens(v, map[byte]string{
-			'd': home, 'h': cfg.host, 'n': alias, 'p': cfg.port, 'r': cfg.username, 'u': cfg.localUser,
-		})
-		if err != nil {
-			return fmt.Errorf("ssh config IdentityFile for %s: %w", alias, err)
+	if cfg.identityFile == "" {
+		if cfg.identityFile, err = vals.Expand("IdentityFile", local); err != nil {
+			return fmt.Errorf("ssh config for %s: %w", alias, err)
 		}
-		cfg.identityFile = identityFile
 	}
 
 	return nil

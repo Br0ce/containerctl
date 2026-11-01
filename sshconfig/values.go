@@ -1,12 +1,16 @@
 package sshconfig
 
-import "strings"
+import (
+	"maps"
+	"strings"
+)
 
 // Values are the values that apply to a host alias, keyed by lowercased keyword. Get and
 // GetAll return them as written in the config, Expand and ExpandAll expand them.
 type Values struct {
 	alias  string
 	values map[string][]string
+	set    map[string]bool // keys given by Set, which are not expanded
 }
 
 // Lookup returns the values that apply when connecting to alias, reading configs in order
@@ -18,6 +22,20 @@ func Lookup(alias string, configs ...*Config) Values {
 		r.walk(c)
 	}
 	return Values{alias: alias, values: r.values}
+}
+
+// Set returns a copy of vs with key set to v, replacing the values from the config, like an
+// option given on the ssh command line. Expand returns v as is, and tokens derived from key,
+// e.g. %p for Port or %r for User, use v. Keys are case-insensitive.
+func (vs Values) Set(key, v string) Values {
+	key = strings.ToLower(key)
+	values := make(map[string][]string, len(vs.values)+1)
+	maps.Copy(values, vs.values)
+	values[key] = []string{v}
+	set := make(map[string]bool, len(vs.set)+1)
+	maps.Copy(set, vs.set)
+	set[key] = true
+	return Values{alias: vs.alias, values: values, set: set}
 }
 
 // Get returns the value in effect for key, i.e. the first one obtained, or "" if key is

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Br0ce/containerctl/sshconfig"
 )
 
 // newTestConfig returns the Config for opts with its ssh directory in a temp dir, where
@@ -46,7 +48,7 @@ func TestRewriteFromSSHConfig(t *testing.T) {
 func TestRewriteFromSSHConfigTokens(t *testing.T) {
 	content := "Host prod-*\n  HostName %h.corp.example.com\n  User %u\n  IdentityFile ~/.ssh/%h_%r_key\n"
 	cfg := newTestConfig(t, content, WithHost("prod-api"))
-	cfg.localUser = "max"
+	cfg.local.User = "max"
 	if err := cfg.rewriteFromSSHConfig(); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +59,7 @@ func TestRewriteFromSSHConfigTokens(t *testing.T) {
 	if got, want := cfg.Username(), "max"; got != want {
 		t.Errorf("Username() = %q, want %q", got, want)
 	}
-	if got, want := cfg.identityFile, "~/.ssh/prod-api.corp.example.com_max_key"; got != want {
+	if got, want := cfg.identityFile, filepath.Join(cfg.sshDir, "prod-api.corp.example.com_max_key"); got != want {
 		t.Errorf("identityFile = %q, want %q", got, want)
 	}
 }
@@ -113,10 +115,25 @@ func TestRewriteFromSSHConfigCommandLineWins(t *testing.T) {
 			if got := cfg.Username(); got != tt.wantUser {
 				t.Errorf("Username() = %q, want %q", got, tt.wantUser)
 			}
-			if got := cfg.identityFile; got != tt.wantIdentityFile {
-				t.Errorf("identityFile = %q, want %q", got, tt.wantIdentityFile)
+			wantIdentityFile := tt.wantIdentityFile
+			if rest, ok := strings.CutPrefix(wantIdentityFile, "~/"); ok {
+				wantIdentityFile = filepath.Join(filepath.Dir(cfg.sshDir), rest)
+			}
+			if got := cfg.identityFile; got != wantIdentityFile {
+				t.Errorf("identityFile = %q, want %q", got, wantIdentityFile)
 			}
 		})
+	}
+}
+
+func TestRewriteFromSSHConfigCommandLineTokens(t *testing.T) {
+	content := "Host myalias\n  Port 2222\n  User alice\n  IdentityFile ~/.ssh/%r_%p_key\n"
+	cfg := newTestConfig(t, content, WithHost("bob@myalias:2022"))
+	if err := cfg.rewriteFromSSHConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.identityFile, filepath.Join(cfg.sshDir, "bob_2022_key"); got != want {
+		t.Errorf("identityFile = %q, want %q", got, want)
 	}
 }
 
@@ -170,7 +187,7 @@ func TestRewriteFromSystemSSHConfig(t *testing.T) {
 func TestReadSSHConfigs(t *testing.T) {
 	dir := t.TempDir()
 	outside := filepath.Join(dir, "dotfiles-config")
-	if err := os.WriteFile(outside, []byte("Host x\n"), 0o600); err != nil {
+	if err := os.WriteFile(outside, []byte("Host myalias\n  HostName real.example.com\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	unreadable := filepath.Join(dir, "unreadable")
@@ -182,11 +199,12 @@ func TestReadSSHConfigs(t *testing.T) {
 		name         string
 		symlink      bool   // ~/.ssh/config is a symlink to a file outside ~/.ssh
 		systemConfig string // "" if disabled
+		wantHostName string // HostName looked up for myalias
 		wantErr      string // "" if no error is expected
 	}{
-		{"missing configs are skipped", false, filepath.Join(dir, "missing"), ""},
-		{"symlink outside ~/.ssh", true, "", "a symlink outside ~/.ssh is not supported"},
-		{"unreadable system config", false, unreadable, "permission denied"},
+		{"missing configs are skipped", false, filepath.Join(dir, "missing"), "", ""},
+		{"symlink outside ~/.ssh", true, "", "real.example.com", ""},
+		{"unreadable system config", false, unreadable, "", "permission denied"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -211,14 +229,17 @@ func TestReadSSHConfigs(t *testing.T) {
 			cfg.systemSSHConfig = tt.systemConfig
 
 			configs, err := cfg.readSSHConfigs()
-			if tt.wantErr == "" {
-				if err != nil || len(configs) != 0 {
-					t.Errorf("readSSHConfigs() = %d configs, %v, want none and no error", len(configs), err)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("readSSHConfigs() error = %v, want it to contain %q", err, tt.wantErr)
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("readSSHConfigs() error = %v, want it to contain %q", err, tt.wantErr)
+			if err != nil {
+				t.Fatalf("readSSHConfigs() error = %v", err)
+			}
+			if got := sshconfig.Lookup("myalias", configs...).Get("HostName"); got != tt.wantHostName {
+				t.Errorf("HostName = %q, want %q", got, tt.wantHostName)
 			}
 		})
 	}

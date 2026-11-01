@@ -196,3 +196,29 @@ func TestValuesExpandAll(t *testing.T) {
 		t.Error("ExpandAll(IdentityFile) error = nil, want an error")
 	}
 }
+
+func TestValuesSet(t *testing.T) {
+	orig := lookup(t, "tokens", "web")
+	s := orig.Set("port", "2022").Set("User", "%u-ops")
+
+	tests := []struct {
+		key, want string
+	}{
+		{"Port", "2022"},
+		// A set value is not expanded.
+		{"User", "%u-ops"},
+		// %r and %p use the set values.
+		{"IdentityFile", "/home/max/.ssh/web.example.com_%u-ops"},
+		{"ProxyCommand", "ssh -W web.example.com:2022 %u-ops@gateway"},
+	}
+	for _, tt := range tests {
+		got, err := s.Expand(tt.key, local)
+		if err != nil || got != tt.want {
+			t.Errorf("Expand(%q) = %q, %v, want %q", tt.key, got, err, tt.want)
+		}
+	}
+
+	if got := orig.Get("Port"); got != "2222" {
+		t.Errorf("Set changed the original: Get(Port) = %q, want %q", got, "2222")
+	}
+}

@@ -67,6 +67,9 @@ var tildeKeywords = map[string]bool{
 
 // expand expands the value v of the lowercased keyword key.
 func (vs Values) expand(key, v string, local Local) (string, error) {
+	if vs.set[key] {
+		return v, nil
+	}
 	if tildeKeywords[key] {
 		v = expandTilde(key, v, local.Home)
 	}
