@@ -1,0 +1,13 @@
+# A system-wide config as found on company-managed machines. Relative includes resolve
+# against /etc/ssh, here testdata/etc/ssh.
+
+Include ssh_config.d/*
+
+Host *
+    SendEnv LANG LC_*
+    User sysdefault
+
+# Like Fedora/RHEL: final is not supported, so the block is skipped. The included file
+# does not exist, which is fine.
+Match final all
+    Include crypto-policies/openssh.config

@@ -3,14 +3,18 @@ package client
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
 
-	"github.com/kevinburke/ssh_config"
+	"github.com/Br0ce/containerctl/sshconfig"
 )
+
+// systemSSHConfigPath is the system-wide ssh config, read after ~/.ssh/config if enabled.
+const systemSSHConfigPath = "/etc/ssh/ssh_config"
 
 type Config struct {
 	host         string
@@ -20,6 +24,13 @@ type Config struct {
 	identityFile string
 	askPwd       bool
 	sshDir       string
+	localUser    string
+	// systemSSHConfig is the path of the system-wide ssh config, or "" if it is not read.
+	systemSSHConfig string
+	// portSet and usernameSet are true if the port or username were given on the command
+	// line. As in OpenSSH, they then take precedence over the ssh config.
+	portSet     bool
+	usernameSet bool
 }
 
 type ClientOptions func(*Config)
@@ -54,6 +65,16 @@ func WithAskPassword(ask bool) ClientOptions {
 	}
 }
 
+// WithSystemSSHConfig enables reading /etc/ssh/ssh_config after ~/.ssh/config.
+func WithSystemSSHConfig(enable bool) ClientOptions {
+	return func(cfg *Config) {
+		cfg.systemSSHConfig = ""
+		if enable {
+			cfg.systemSSHConfig = systemSSHConfigPath
+		}
+	}
+}
+
 // NewSSHClient creates a new SSH client for the given optins.
 //
 // Note that the host, username, port and identity file can be rewritten during ssh client construction
@@ -73,6 +94,7 @@ func NewConfig(opts ...ClientOptions) (*Config, error) {
 	}
 	if u.Port() != "" {
 		cfg.port = u.Port()
+		cfg.portSet = true
 	} else {
 		// Default to port 22 if not specified.
 		cfg.port = "22"
@@ -81,13 +103,14 @@ func NewConfig(opts ...ClientOptions) (*Config, error) {
 	if _, present := u.User.Password(); present {
 		return nil, fmt.Errorf("username must be provided with --ask-password, not embedded in host")
 	}
-	cfg.host = u.Host
+	cfg.host = u.Hostname()
 
 	curUser, err := user.Current()
 	if err != nil {
 		return nil, fmt.Errorf("get current user: %w", err)
 	}
 	cfg.sshDir = filepath.Join(curUser.HomeDir, ".ssh")
+	cfg.localUser = curUser.Username
 
 	if cfg.username != "" && u.User.Username() != "" {
 		return nil, fmt.Errorf("username provided in both host and argument")
@@ -95,6 +118,7 @@ func NewConfig(opts ...ClientOptions) (*Config, error) {
 	if cfg.username == "" {
 		cfg.username = u.User.Username()
 	}
+	cfg.usernameSet = cfg.username != ""
 	// If username is still empty, default to current user.
 	if cfg.username == "" {
 		cfg.username = curUser.Username
@@ -160,48 +184,99 @@ func (cfg *Config) openIdentityFile() (*os.File, error) {
 	return nil, fmt.Errorf("open identity file: %w", errs)
 }
 
-// rewriteFromSSHConfig rewrites the host, username, port and identity file from the given ssh
-// config file if present.
+// readSSHConfigs reads ~/.ssh/config and, if enabled, the system-wide ssh config, in the
+// order OpenSSH reads them. A config that does not exist is skipped.
 //
-// It returns an error if the file cannot be read or parsed.
-func (cfg *Config) rewriteFromSSHConfig(file *os.File) error {
-	sshCfg, err := ssh_config.Decode(file)
-	if err != nil {
-		return fmt.Errorf("decode ssh config: %w", err)
-	}
+// It returns an error if a config exists but cannot be opened or parsed, e.g. if
+// ~/.ssh/config is a symlink outside ~/.ssh.
+func (cfg *Config) readSSHConfigs() ([]*sshconfig.Config, error) {
+	home := filepath.Dir(cfg.sshDir)
+	var configs []*sshconfig.Config
 
-	host := cfg.host
-
-	hostCfg, err := sshCfg.Get(host, "HostName")
-	if err != nil {
-		return fmt.Errorf("get ssh config for HostName %s: %w", cfg.Addr(), err)
-	}
-	if hostCfg != "" {
-		cfg.host = hostCfg
-	}
-
-	portCfg, err := sshCfg.Get(host, "Port")
-	if err != nil {
-		return fmt.Errorf("get ssh config for Port %s: %w", cfg.Addr(), err)
-	}
-	if portCfg != "" {
-		cfg.port = portCfg
-	}
-
-	userCfg, err := sshCfg.Get(host, "User")
-	if err != nil {
-		return fmt.Errorf("get ssh config for User %s: %w", cfg.Addr(), err)
-	}
-	if userCfg != "" {
-		cfg.username = userCfg
-	}
-
-	if cfg.identityFile == "" {
-		identityFileCfg, err := sshCfg.Get(host, "IdentityFile")
-		if err != nil {
-			return fmt.Errorf("get ssh config for IdentityFile %s: %w", cfg.Addr(), err)
+	userPath := filepath.Join(cfg.sshDir, "config")
+	userFile, err := os.OpenInRoot(cfg.sshDir, "config")
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		if info, lerr := os.Lstat(userPath); lerr == nil && info.Mode()&fs.ModeSymlink != 0 {
+			return nil, fmt.Errorf("open %s: %w (a symlink outside ~/.ssh is not supported)", userPath, err)
 		}
-		cfg.identityFile = identityFileCfg
+		return nil, fmt.Errorf("open %s: %w", userPath, err)
+	default:
+		defer userFile.Close()
+		userCfg, err := sshconfig.Decode(userFile, sshconfig.WithHome(home))
+		if err != nil {
+			return nil, fmt.Errorf("decode %s: %w", userPath, err)
+		}
+		configs = append(configs, userCfg)
+	}
+
+	if cfg.systemSSHConfig != "" {
+		// Not os.OpenInRoot: some distros (e.g. NixOS) make the system config a symlink
+		// outside /etc/ssh, which it would refuse.
+		systemFile, err := os.Open(cfg.systemSSHConfig)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+		case err != nil:
+			return nil, fmt.Errorf("open %s: %w", cfg.systemSSHConfig, err)
+		default:
+			defer systemFile.Close()
+			systemCfg, err := sshconfig.Decode(systemFile, sshconfig.WithHome(home), sshconfig.WithIncludeDir(filepath.Dir(cfg.systemSSHConfig)))
+			if err != nil {
+				return nil, fmt.Errorf("decode %s: %w", cfg.systemSSHConfig, err)
+			}
+			configs = append(configs, systemCfg)
+		}
+	}
+
+	return configs, nil
+}
+
+// rewriteFromSSHConfig rewrites the host, username, port and identity file from ~/.ssh/config
+// and, if enabled, the system-wide ssh config. Tokens such as %h are expanded like OpenSSH
+// does for each keyword. A username, port or identity file given on the command line is kept.
+//
+// It returns an error if a config cannot be parsed or a value has an unknown token.
+func (cfg *Config) rewriteFromSSHConfig() error {
+	configs, err := cfg.readSSHConfigs()
+	if err != nil {
+		return err
+	}
+
+	home := filepath.Dir(cfg.sshDir)
+	alias := cfg.host
+	vals := sshconfig.Lookup(alias, configs...)
+
+	if v := vals.Get("HostName"); v != "" {
+		host, err := sshconfig.ExpandTokens(v, map[byte]string{'h': alias})
+		if err != nil {
+			return fmt.Errorf("ssh config HostName for %s: %w", alias, err)
+		}
+		cfg.host = host
+	}
+
+	if v := vals.Get("Port"); !cfg.portSet && v != "" {
+		cfg.port = v
+	}
+
+	if v := vals.Get("User"); !cfg.usernameSet && v != "" {
+		username, err := sshconfig.ExpandTokens(v, map[byte]string{
+			'h': cfg.host, 'n': alias, 'p': cfg.port, 'u': cfg.localUser,
+		})
+		if err != nil {
+			return fmt.Errorf("ssh config User for %s: %w", alias, err)
+		}
+		cfg.username = username
+	}
+
+	if v := vals.Get("IdentityFile"); cfg.identityFile == "" && v != "" {
+		identityFile, err := sshconfig.ExpandTokens(v, map[byte]string{
+			'd': home, 'h': cfg.host, 'n': alias, 'p': cfg.port, 'r': cfg.username, 'u': cfg.localUser,
+		})
+		if err != nil {
+			return fmt.Errorf("ssh config IdentityFile for %s: %w", alias, err)
+		}
+		cfg.identityFile = identityFile
 	}
 
 	return nil
