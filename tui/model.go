@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -19,6 +20,7 @@ import (
 	"github.com/Br0ce/containerctl/tui/header"
 	"github.com/Br0ce/containerctl/tui/inspect"
 	"github.com/Br0ce/containerctl/tui/logs"
+	"github.com/Br0ce/containerctl/tui/preview"
 	"github.com/Br0ce/containerctl/tui/stats"
 	"github.com/Br0ce/containerctl/tui/theme"
 )
@@ -32,6 +34,10 @@ const (
 	inspectPage
 	statsPage
 )
+
+// splitWidth is the narrowest window that shows the preview next to the files
+// list; below it, the preview takes the place of the list.
+const splitWidth = 100
 
 // footerIndent lines the footer up with the text in the header boxes, which
 // sits behind the border and one column of padding.
@@ -47,6 +53,7 @@ type Model struct {
 	containers    containers.Model
 	logs          logs.Model
 	files         files.Model
+	preview       preview.Model
 	inspect       inspect.Model
 	stats         stats.Model
 	// logSession identifies the current log stream, so that lines still in
@@ -56,9 +63,27 @@ type Model struct {
 	// filesSession identifies the current directory request, so that
 	// listings still in flight from a previous request are dropped.
 	filesSession int
+	// filesLoading is set while a listing is on its way; stopFiles cancels
+	// its request.
+	filesLoading bool
+	stopFiles    context.CancelFunc
 	// inspectSession identifies the current details request, so that
 	// details still in flight from a previous request are dropped.
 	inspectSession int
+	// previewing is the file shown in the preview on the files page; its
+	// Path is empty if the preview is closed. previewFocused is set while
+	// the preview has the focus next to the list. previewSession
+	// identifies the current request, so that content still in flight for
+	// a previous file is dropped.
+	previewing     file.Info
+	previewFocused bool
+	previewSession int
+	stopPreview    context.CancelFunc
+	// spinner animates the titles of the files list and the preview while
+	// they load. spinning is set while its ticks run, so that a second
+	// request doesn't start a second loop.
+	spinner  spinner.Model
+	spinning bool
 	// statsSession identifies the current stats stream, so that samples
 	// still in flight from a previous stream are dropped.
 	statsSession int
@@ -84,17 +109,21 @@ type Model struct {
 
 func newModel(cli Client) Model {
 	return Model{
-		cli:        cli,
-		header:     header.New(cli.DaemonHost(), cli.DaemonVersion()),
-		help:       help.New(),
-		containers: containers.New(),
-		logs:       logs.New(),
-		files:      files.New(),
-		dest:       textinput.New(),
-		inspect:    inspect.New(),
-		stats:      stats.New(),
-		stopLogs:   func() {},
-		stopStats:  func() {},
+		cli:         cli,
+		header:      header.New(cli.DaemonHost(), cli.DaemonVersion()),
+		help:        help.New(),
+		containers:  containers.New(),
+		logs:        logs.New(),
+		files:       files.New(),
+		preview:     preview.New(),
+		spinner:     spinner.New(spinner.WithSpinner(spinner.MiniDot)),
+		dest:        textinput.New(),
+		inspect:     inspect.New(),
+		stats:       stats.New(),
+		stopLogs:    func() {},
+		stopFiles:   func() {},
+		stopPreview: func() {},
+		stopStats:   func() {},
 	}
 }
 
@@ -121,6 +150,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, quitKey):
 			m.stopLogs()
 			m.stopStats()
+			m.stopFiles()
+			m.stopPreview()
 			return m, tea.Quit
 		case key.Matches(msg, helpKey):
 			m.help.ShowAll = !m.help.ShowAll
@@ -158,14 +189,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.openDir()
 		case m.page == filesPage && key.Matches(msg, copyKey):
 			return m.startCopy()
+		case m.page == filesPage && key.Matches(msg, previewKey):
+			return m.togglePreview()
+		case m.page == filesPage && m.previewing.Path != "" && key.Matches(msg, focusKey):
+			if m.split() {
+				m.previewFocused = !m.previewFocused
+			}
+			return m.layout(), nil
+		case m.page == filesPage && m.previewing.Path != "" && key.Matches(msg, closePreviewKey):
+			return m.closePreview(), nil
 		case m.page == inspectPage && key.Matches(msg, refreshKey):
 			m.inspectSession++
 			return m, fetchDetails(m.cli, m.inspectSession, m.inspected)
 		case m.page != containersPage && key.Matches(msg, backKey):
 			m.stopLogs()
 			m.stopStats()
+			m.stopFiles()
 			m.filesSession++
+			m.filesLoading = false
 			m.inspectSession++
+			m = m.closePreview()
 			m.page = containersPage
 			m.header = m.header.ClearContainer()
 			return m.layout(), nil
@@ -180,6 +223,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		return m, fetchContainers(m.cli)
+
+	case spinner.TickMsg:
+		if !m.loading() {
+			m.spinning = false
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 
 	case engineMsg:
 		// Without the host's information the header keeps showing the
@@ -253,6 +305,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.session != m.filesSession {
 			return m, nil
 		}
+		m.filesLoading = false
 		if msg.err != nil {
 			m.files = m.files.SetErr(msg.err)
 			return m, nil
@@ -264,6 +317,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			path = msg.files[0].DisplayName
 		}
 		m.files = m.files.SetFiles(path, msg.files)
+		return m, nil
+
+	case previewMsg:
+		if msg.session != m.previewSession {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.preview = m.preview.SetErr(msg.err)
+			return m, nil
+		}
+		m.preview = m.preview.SetContent(msg.data, msg.truncated)
 		return m, nil
 
 	case detailsMsg:
@@ -290,7 +354,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logsPage:
 		m.logs, cmd = m.logs.Update(msg)
 	case filesPage:
-		m.files, cmd = m.files.Update(msg)
+		if m.previewHasFocus() {
+			m.preview, cmd = m.preview.Update(msg)
+		} else {
+			m.files, cmd = m.files.Update(msg)
+		}
 	case inspectPage:
 		m.inspect, cmd = m.inspect.Update(msg)
 	}
@@ -408,11 +476,16 @@ func (m Model) openFiles() (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	m.stopFiles()
 	m.filesSession++
+	m.filesLoading = true
+	var fetch tea.Cmd
+	fetch, m.stopFiles = fetchFiles(m.cli, m.filesSession, file.Info{ContainerID: s.ID})
 	m.files = m.files.Start()
 	m.header = m.header.SetContainer(s)
 	m.page = filesPage
-	return m.layout(), fetchFiles(m.cli, m.filesSession, file.Info{ContainerID: s.ID})
+	m, spin := m.spin()
+	return m.layout(), tea.Batch(fetch, spin)
 }
 
 // openInspect switches to the inspect page and fetches the details of the
@@ -447,15 +520,91 @@ func (m Model) openStats() (Model, tea.Cmd) {
 	return m.layout(), cmd
 }
 
-// openDir lists the selected directory. The current listing stays until the
-// new one arrives.
+// openDir lists the selected directory, canceling a listing still on its
+// way. The current listing stays until the new one arrives.
 func (m Model) openDir() (Model, tea.Cmd) {
 	f, ok := m.files.Selected()
 	if !ok || !f.IsDir {
 		return m, nil
 	}
+	m.stopFiles()
 	m.filesSession++
-	return m, fetchFiles(m.cli, m.filesSession, f)
+	m.filesLoading = true
+	var fetch tea.Cmd
+	fetch, m.stopFiles = fetchFiles(m.cli, m.filesSession, f)
+	m = m.closePreview()
+	m, spin := m.spin()
+	return m, tea.Batch(fetch, spin)
+}
+
+// togglePreview shows the selected file in the preview, or closes the preview
+// if it already shows that file. Directories are skipped.
+func (m Model) togglePreview() (Model, tea.Cmd) {
+	f, ok := m.files.Selected()
+	if !ok || f.IsDir {
+		return m, nil
+	}
+	if f.Path == m.previewing.Path {
+		return m.closePreview(), nil
+	}
+	m.stopPreview()
+	m.previewSession++
+	m.previewing = f
+	var fetch tea.Cmd
+	fetch, m.stopPreview = fetchPreview(m.cli, m.previewSession, f)
+	m.preview = m.preview.Start(f)
+	m, spin := m.spin()
+	return m.layout(), tea.Batch(fetch, spin)
+}
+
+// closePreview hides the preview and gives the focus back to the list. A
+// request still in flight is canceled, and dropped if it arrives anyway.
+func (m Model) closePreview() Model {
+	if m.previewing.Path == "" {
+		return m
+	}
+	m.stopPreview()
+	m.previewSession++
+	m.previewing = file.Info{}
+	m.previewFocused = false
+	return m.layout()
+}
+
+// spin starts the spinner unless it already runs. It stops by itself once
+// nothing is loading anymore.
+func (m Model) spin() (Model, tea.Cmd) {
+	if m.spinning {
+		return m, nil
+	}
+	m.spinning = true
+	return m, m.spinner.Tick
+}
+
+// loading reports whether a listing or the content of the previewed file is
+// on its way.
+func (m Model) loading() bool {
+	return m.filesLoading || (m.previewing.Path != "" && m.preview.Loading())
+}
+
+// spinnerFrame returns the current frame of the spinner if loading is set,
+// and "" otherwise.
+func (m Model) spinnerFrame(loading bool) string {
+	if !loading {
+		return ""
+	}
+	return m.spinner.View()
+}
+
+// split reports whether the window is wide enough to show the preview next
+// to the files list.
+func (m Model) split() bool {
+	return m.width >= splitWidth
+}
+
+// previewHasFocus reports whether keys go to the preview: it has the focus
+// next to the list, or it takes the place of the list on a narrow window.
+func (m Model) previewHasFocus() bool {
+	return m.previewing.Path != "" && (m.previewFocused || !m.split())
 }
 
 // layout gives the active pane the space left over by the header and the
@@ -468,7 +617,14 @@ func (m Model) layout() Model {
 	bodyH := max(m.height-header.Height-lipgloss.Height(m.footer()), 0)
 	m.containers = m.containers.SetSize(m.width, bodyH)
 	m.logs = m.logs.SetSize(m.width, bodyH)
-	m.files = m.files.SetSize(m.width, bodyH)
+	listW, previewW := m.width, m.width
+	if m.previewing.Path != "" && m.split() {
+		// Split like the header boxes, so the borders line up.
+		listW = m.width / 2
+		previewW = m.width - listW
+	}
+	m.files = m.files.SetSize(listW, bodyH).SetFocused(!m.previewHasFocus())
+	m.preview = m.preview.SetSize(previewW, bodyH).SetFocused(m.previewHasFocus())
 	m.inspect = m.inspect.SetSize(m.width, bodyH)
 	m.stats = m.stats.SetSize(m.width, bodyH)
 	return m
@@ -511,7 +667,13 @@ func (m Model) keyMap() help.KeyMap {
 	case logsPage:
 		keys = logsKeyMap{logs: m.logs.KeyMap()}
 	case filesPage:
-		keys = filesKeyMap{table: m.files.KeyMap()}
+		keys = filesKeyMap{
+			table:          m.files.KeyMap(),
+			preview:        m.preview.KeyMap(),
+			previewing:     m.previewing.Path != "",
+			split:          m.split(),
+			previewFocused: m.previewHasFocus(),
+		}
 	case inspectPage:
 		keys = inspectKeyMap{inspect: m.inspect.KeyMap()}
 	case statsPage:
@@ -522,13 +684,28 @@ func (m Model) keyMap() help.KeyMap {
 	return keys
 }
 
+// filesView shows the files list, next to the preview if it is open, or only
+// the preview if the window is too narrow for both.
+func (m Model) filesView() string {
+	list := m.files.SetSpinner(m.spinnerFrame(m.filesLoading))
+	prev := m.preview.SetSpinner(m.spinnerFrame(m.preview.Loading()))
+	switch {
+	case m.previewing.Path == "":
+		return list.View()
+	case m.split():
+		return lipgloss.JoinHorizontal(lipgloss.Top, list.View(), prev.View())
+	default:
+		return prev.View()
+	}
+}
+
 func (m Model) View() tea.View {
 	var content string
 	switch {
 	case m.page == logsPage:
 		content = m.logs.View()
 	case m.page == filesPage:
-		content = m.files.View()
+		content = m.filesView()
 	case m.page == inspectPage:
 		content = m.inspect.View()
 	case m.page == statsPage:

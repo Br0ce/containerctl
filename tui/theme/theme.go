@@ -34,6 +34,9 @@ var (
 	selectedDark = lipgloss.Color("#1E40AF") // Dark blue
 
 	box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent)
+	// dimBox and dimTitle mark a pane next to the one that has the focus.
+	dimBox   = box.BorderForeground(lipgloss.Color("#6B7280"))           // Gray
+	dimTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF")) // Light gray
 )
 
 // HeaderFor returns the style of column headers and section titles for the
@@ -69,14 +72,24 @@ const (
 // title is composed as a layer on top of the border. Content lines that don't
 // fit are truncated, not wrapped.
 func Box(title string, width int, content string) string {
+	return renderBox(box, Title, title, width, content)
+}
+
+// DimBox renders like Box with a gray border and title, for a pane shown next
+// to the one that has the focus.
+func DimBox(title string, width int, content string) string {
+	return renderBox(dimBox, dimTitle, title, width, content)
+}
+
+func renderBox(border, titleStyle lipgloss.Style, title string, width int, content string) string {
 	inner := max(width-BoxFrameWidth, 0)
 	lines := strings.Split(content, "\n")
 	for i, l := range lines {
 		lines[i] = ansi.Truncate(l, inner, "")
 	}
-	body := box.Width(width).Render(strings.Join(lines, "\n"))
+	body := border.Width(width).Render(strings.Join(lines, "\n"))
 
-	label := Title.Render(ansi.Truncate(" "+title+" ", inner, ""))
+	label := titleStyle.Render(ansi.Truncate(" "+title+" ", inner, ""))
 	x := (width - lipgloss.Width(label)) / 2
 	return lipgloss.NewCompositor(
 		lipgloss.NewLayer(body),

@@ -6,6 +6,7 @@ import (
 
 	"github.com/Br0ce/containerctl/tui/inspect"
 	"github.com/Br0ce/containerctl/tui/logs"
+	"github.com/Br0ce/containerctl/tui/preview"
 )
 
 var (
@@ -26,6 +27,11 @@ var (
 	unpauseKey = key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "unpause"))
 	openKey    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open dir"))
 	copyKey    = key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "copy"))
+	previewKey = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "preview"))
+	focusKey   = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch focus"))
+	// closePreviewKey closes the preview before backKey leaves the files
+	// page.
+	closePreviewKey = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close preview"))
 	// submitKey and cancelKey end the prompt for the copy destination.
 	submitKey = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "copy"))
 	cancelKey = key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel"))
@@ -85,26 +91,67 @@ func (k logsKeyMap) FullHelp() [][]key.Binding {
 }
 
 // filesKeyMap combines the global keys with those of the files pane for the
-// help footer.
+// help footer. While the preview is open, it shows the keys of the side that
+// has the focus; split is set if the preview is shown next to the list.
 type filesKeyMap struct {
-	table table.KeyMap
+	table          table.KeyMap
+	preview        preview.KeyMap
+	previewing     bool
+	split          bool
+	previewFocused bool
 }
 
 func (k filesKeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{openKey, copyKey, backKey, k.table.LineUp, k.table.LineDown, quitKey, helpKey}
+	if !k.previewing {
+		return []key.Binding{openKey, previewKey, copyKey, backKey, k.table.LineUp, k.table.LineDown, quitKey, helpKey}
+	}
+	keys := []key.Binding{previewKey, closePreviewKey}
+	if k.split {
+		keys = append(keys, focusKey)
+	}
+	if k.previewFocused {
+		keys = append(keys, k.preview.Up, k.preview.Down)
+	} else {
+		keys = append(keys, k.table.LineUp, k.table.LineDown)
+	}
+	return append(keys, quitKey, helpKey)
 }
 
 // FullHelp pairs related bindings so the full help fits on two lines.
 func (k filesKeyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{openKey, copyKey},
-		{backKey},
-		{k.table.LineUp, k.table.LineDown},
-		{k.table.GotoTop, k.table.GotoBottom},
-		{k.table.PageUp, k.table.PageDown},
-		{k.table.HalfPageUp, k.table.HalfPageDown},
-		{quitKey, helpKey},
+	if !k.previewing {
+		return [][]key.Binding{
+			{openKey, copyKey},
+			{previewKey, backKey},
+			{k.table.LineUp, k.table.LineDown},
+			{k.table.GotoTop, k.table.GotoBottom},
+			{k.table.PageUp, k.table.PageDown},
+			{k.table.HalfPageUp, k.table.HalfPageDown},
+			{quitKey, helpKey},
+		}
 	}
+	groups := [][]key.Binding{{previewKey, closePreviewKey}}
+	if k.split {
+		groups = append(groups, []key.Binding{focusKey})
+	}
+	if k.previewFocused {
+		groups = append(groups,
+			[]key.Binding{k.preview.Up, k.preview.Down},
+			[]key.Binding{k.preview.Top, k.preview.Bottom},
+			[]key.Binding{k.preview.PageUp, k.preview.PageDown},
+			[]key.Binding{k.preview.HalfPageUp, k.preview.HalfPageDown},
+			[]key.Binding{k.preview.Left, k.preview.Right},
+		)
+	} else {
+		groups = append(groups,
+			[]key.Binding{openKey, copyKey},
+			[]key.Binding{k.table.LineUp, k.table.LineDown},
+			[]key.Binding{k.table.GotoTop, k.table.GotoBottom},
+			[]key.Binding{k.table.PageUp, k.table.PageDown},
+			[]key.Binding{k.table.HalfPageUp, k.table.HalfPageDown},
+		)
+	}
+	return append(groups, []key.Binding{quitKey, helpKey})
 }
 
 // inspectKeyMap combines the global keys with those of the inspect pane for

@@ -8,7 +8,9 @@ services:
     container_name: web
     image: nginx:alpine
     # Listen on 8080 so that host and container port match, like the others.
-    command: ["sh", "-c", "sed -i 's/80;/8080;/' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+    # The leading space keeps the patch from matching "8080;" again when the
+    # container is restarted with its already patched config.
+    command: ["sh", "-c", "sed -i 's/ 80;/ 8080;/' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
     ports:
       - "8080:8080"
     healthcheck:

@@ -24,11 +24,20 @@ The default view lists all containers on the connected host, with a colored dot 
 
 - **Logs** — follow its output in real time.
 - **Shell** — open an interactive shell inside the container.
-- **Files** — browse the filesystem without a shell, which also works for stopped containers and distroless images, and copy files or directories to your machine.
+- **Files** — browse the filesystem, preview files and copy them to your machine (see [Files](#files)).
 - **Inspect** — view the container's configuration and details.
 - **Stats** — watch live CPU, memory and network usage.
 
 You can also start, stop, restart, pause and remove containers.
+
+### Files
+
+<img src="docs/img/file-preview.png" width="800" alt="cctl files pane with a preview of nginx.conf next to the listing">
+
+Browse a container's filesystem without a shell. Nothing runs inside the container, so this also works for stopped containers and distroless images.
+
+- **Preview** — press `p` on a file to show it next to the listing, and `Tab` to switch the focus between list and preview. Text is shown as plain text, other files with their type and a hex dump. On narrow terminals the preview takes the place of the list.
+- **Copy** — press `c` to copy a file or directory to your machine, like `docker cp`.
 
 
 ## SSH
@@ -67,7 +76,7 @@ Download the binary for your platform from the [releases page](https://github.co
 ### macOS (Apple Silicon)
 
 ```sh
-VERSION=v1.0.0  # replace with the desired version
+VERSION=v1.1.0  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-darwin-arm64
 
 # Verify the checksum against the value published on the releases page
@@ -81,7 +90,7 @@ cctl --version
 ### Linux (amd64)
 
 ```sh
-VERSION=v1.0.0  # replace with the desired version
+VERSION=v1.1.0  # replace with the desired version
 curl -LO https://github.com/Br0ce/containerctl/releases/download/${VERSION}/containerctl-${VERSION}-linux-amd64
 
 # Verify the checksum against the value published on the releases page
