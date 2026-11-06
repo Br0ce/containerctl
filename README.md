@@ -28,30 +28,8 @@ The default view lists all containers on the connected host, with a colored dot 
 - **Inspect** — view the container's configuration and details.
 - **Stats** — watch live CPU, memory and network usage.
 
-You can also start, stop, restart, pause and remove containers. Actions run in the background so the UI stays responsive; failures are reported briefly on the status line.
+You can also start, stop, restart, pause and remove containers.
 
-### Keys
-
-| Key          | Page       | Action                                  |
-|--------------|------------|-----------------------------------------|
-| `l`          | containers | Stream logs                             |
-| `t`          | containers | Open a shell in the container           |
-| `f`          | containers | Browse the filesystem                   |
-| `i`          | containers | Inspect container details               |
-| `m`          | containers | Show live resource stats                |
-| `s` / `x`    | containers | Start / stop                            |
-| `r`          | containers | Restart                                 |
-| `p` / `u`    | containers | Pause / unpause                         |
-| `d`          | containers | Remove (confirm with `y`)               |
-| `Enter`      | files      | Open directory                          |
-| `c`          | files      | Copy file or directory to local         |
-| `r`          | inspect    | Refresh details                         |
-| `e`          | inspect    | Show / hide environment values          |
-| `Esc`        | any        | Back to the container list              |
-| `?`          | any        | Toggle full help                        |
-| `q`          | any        | Quit                                    |
-
-The footer shows the keys available in the current view.
 
 ## SSH
 
