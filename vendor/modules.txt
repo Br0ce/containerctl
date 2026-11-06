@@ -4,6 +4,7 @@ charm.land/bubbles/v2/cursor
 charm.land/bubbles/v2/help
 charm.land/bubbles/v2/internal/runeutil
 charm.land/bubbles/v2/key
+charm.land/bubbles/v2/spinner
 charm.land/bubbles/v2/table
 charm.land/bubbles/v2/textinput
 charm.land/bubbles/v2/viewport

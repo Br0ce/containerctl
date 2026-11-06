@@ -36,12 +36,17 @@ var columns = []column{
 // Model is the files pane. It holds no client and performs no I/O; listings
 // are set by the caller as they arrive.
 type Model struct {
-	table  table.Model
-	files  []file.Info
-	path   string
-	err    error
-	width  int
-	innerH int
+	table table.Model
+	files []file.Info
+	path  string
+	err   error
+	// focused is false while the preview next to the list has the focus.
+	focused bool
+	// spinner is the frame shown in front of the title while a listing is
+	// loading; it is empty otherwise.
+	spinner string
+	width   int
+	innerH  int
 }
 
 func New() Model {
@@ -51,7 +56,7 @@ func New() Model {
 		table.WithKeyMap(keyMap()),
 		table.WithStyles(styles(theme.Header, theme.Selected)),
 	)
-	return Model{table: t}
+	return Model{table: t, focused: true}
 }
 
 func styles(header, selected lipgloss.Style) table.Styles {
@@ -66,6 +71,20 @@ func styles(header, selected lipgloss.Style) table.Styles {
 // terminal background.
 func (m Model) SetDark(dark bool) Model {
 	m.table.SetStyles(styles(theme.HeaderFor(dark), theme.SelectedFor(dark)))
+	return m
+}
+
+// SetFocused shows the border in the accent color if the list has the focus,
+// and in gray if the preview next to it has.
+func (m Model) SetFocused(focused bool) Model {
+	m.focused = focused
+	return m
+}
+
+// SetSpinner shows frame in front of the title, for a listing that is
+// loading; an empty frame hides it.
+func (m Model) SetSpinner(frame string) Model {
+	m.spinner = frame
 	return m
 }
 
@@ -192,9 +211,15 @@ func (m Model) View() string {
 	if m.path != "" {
 		title = m.path
 	}
+	if m.spinner != "" {
+		title = m.spinner + " " + title
+	}
 	content := m.table.View()
 	if m.err != nil {
 		content += "\n" + "Error: " + m.err.Error()
+	}
+	if !m.focused {
+		return theme.DimBox(title, m.width, content)
 	}
 	return theme.Box(title, m.width, content)
 }

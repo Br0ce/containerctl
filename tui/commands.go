@@ -19,8 +19,11 @@ import (
 
 const (
 	// requestTimeout bounds every client call made by a command, except
-	// container actions.
+	// container actions and file requests.
 	requestTimeout = 10 * time.Second
+	// fileTimeout bounds a directory listing or a file preview. Listing a
+	// directory transfers its whole subtree, which takes a while over SSH.
+	fileTimeout = 60 * time.Second
 	// actionTimeout bounds a container action. It exceeds the 10 second grace
 	// period Docker gives a container to stop before killing it.
 	actionTimeout = 30 * time.Second
@@ -32,6 +35,9 @@ const (
 	refreshInterval = 3 * time.Second
 	// statusDuration is how long a message stays on the status line.
 	statusDuration = 5 * time.Second
+	// previewLimit bounds the bytes read for a file preview; longer files
+	// are cut off.
+	previewLimit = 1 << 20
 )
 
 type tickMsg struct{}
@@ -80,14 +86,16 @@ type filesMsg struct {
 	err     error
 }
 
-func fetchFiles(cli Client, session int, root file.Info) tea.Cmd {
+// fetchFiles lists directory root in the background. The returned cancel func
+// stops the request, so an abandoned listing doesn't keep transferring.
+func fetchFiles(cli Client, session int, root file.Info) (tea.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), fileTimeout)
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
 
 		files, err := cli.FilesIn(ctx, root)
 		return filesMsg{session: session, root: root, files: files, err: err}
-	}
+	}, cancel
 }
 
 // detailsMsg carries the inspect information of a container. session
@@ -107,6 +115,27 @@ func fetchDetails(cli Client, session int, id string) tea.Cmd {
 		details, err := cli.Details(ctx, id)
 		return detailsMsg{session: session, details: details, err: err}
 	}
+}
+
+// previewMsg carries the first bytes of a previewed file. session identifies
+// the request, so that content arriving after the user moved on is dropped.
+type previewMsg struct {
+	session   int
+	data      []byte
+	truncated bool
+	err       error
+}
+
+// fetchPreview reads the first bytes of f in the background. The returned
+// cancel func stops the request, like for fetchFiles.
+func fetchPreview(cli Client, session int, f file.Info) (tea.Cmd, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), fileTimeout)
+	return func() tea.Msg {
+		defer cancel()
+
+		data, truncated, err := cli.ReadFile(ctx, f, previewLimit)
+		return previewMsg{session: session, data: data, truncated: truncated, err: err}
+	}, cancel
 }
 
 // actionMsg reports the end of a container action such as start or stop.

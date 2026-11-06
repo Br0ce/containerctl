@@ -3,13 +3,16 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"image/color"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -33,6 +36,9 @@ type fakeClient struct {
 	// copies records the copied files, e.g. "/app/main.go -> out.go".
 	copies  []string
 	copyErr error
+	// contents maps a file path to the content ReadFile returns.
+	contents map[string]string
+	readErr  error
 	// terminal, if set, runs in place of the shell session.
 	terminal func(id string, in io.Reader, out io.Writer) error
 	// actions records the container actions in the order they ran, e.g.
@@ -77,6 +83,9 @@ func (f *fakeClient) FilesIn(ctx context.Context, root file.Info) ([]file.Info, 
 	if _, ok := ctx.Deadline(); !ok {
 		return nil, errors.New("expected a deadline on the request context")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if root.ContainerID != shorts[0].ID {
 		return nil, errors.New("unexpected container " + root.ContainerID)
 	}
@@ -92,6 +101,23 @@ func (f *fakeClient) CopyFrom(ctx context.Context, src file.Info, dst string) (s
 		return "", f.copyErr
 	}
 	return "/home/user/" + dst, nil
+}
+
+func (f *fakeClient) ReadFile(ctx context.Context, src file.Info, limit int64) ([]byte, bool, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return nil, false, errors.New("expected a deadline on the request context")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	if f.readErr != nil {
+		return nil, false, f.readErr
+	}
+	data := f.contents[src.Path]
+	if int64(len(data)) > limit {
+		return []byte(data[:limit]), true, nil
+	}
+	return []byte(data), false, nil
 }
 
 func (f *fakeClient) Details(ctx context.Context, id string) (container.Details, error) {
@@ -169,10 +195,45 @@ func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	return updated.(Model), cmd
 }
 
+// msgs runs cmd and the commands batched in it, each exactly once, and
+// returns their messages. Running a request twice would fail: it cancels its
+// context when done.
+func msgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{msg}
+	}
+	var out []tea.Msg
+	for _, c := range batch {
+		out = append(out, msgs(c)...)
+	}
+	return out
+}
+
+// apply applies ms to m. Spinner ticks are skipped: each one schedules the
+// next.
+func apply(m Model, ms []tea.Msg) Model {
+	for _, msg := range ms {
+		if _, ok := msg.(spinner.TickMsg); !ok {
+			m, _ = update(m, msg)
+		}
+	}
+	return m
+}
+
+// deliver runs cmd and applies the messages it produces.
+func deliver(m Model, cmd tea.Cmd) Model {
+	return apply(m, msgs(cmd))
+}
+
 // runInit applies the messages of the commands Init starts.
 func runInit(m Model) Model {
 	for _, cmd := range m.Init()().(tea.BatchMsg) {
-		m, _ = update(m, cmd())
+		m = deliver(m, cmd)
 	}
 	return m
 }
@@ -457,7 +518,7 @@ func openFiles(t *testing.T, cli *fakeClient) Model {
 	if cmd == nil {
 		t.Fatal("expected files command")
 	}
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	return m
 }
 
@@ -492,7 +553,7 @@ func TestOpenDir(t *testing.T) {
 	if !strings.Contains(ansi.Strip(m.View().Content), "main.go") {
 		t.Error("current listing must stay until the new one arrives")
 	}
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	got := ansi.Strip(m.View().Content)
 	if !strings.Contains(got, "/app/static") || !strings.Contains(got, "index.html") || strings.Contains(got, "main.go") {
 		t.Errorf("expected the listing of /app/static: %q", got)
@@ -509,7 +570,7 @@ func TestFilesError(t *testing.T) {
 	cli.filesErr = errors.New("boom")
 	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // static
 	m, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	got := ansi.Strip(m.View().Content)
 	if !strings.Contains(got, "Error: boom") || !strings.Contains(got, "main.go") {
 		t.Errorf("expected the error below the kept listing: %q", got)
@@ -534,7 +595,7 @@ func TestFilesBack(t *testing.T) {
 	}
 
 	// The listing requested before esc arrives late and must be dropped.
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	if strings.Contains(ansi.Strip(m.files.View()), "index.html") {
 		t.Error("stale listing was applied")
 	}
@@ -585,7 +646,7 @@ func TestCopyFile(t *testing.T) {
 	if strings.Contains(ansi.Strip(m.footer()), "Copy main.go") {
 		t.Error("prompt still shown after enter")
 	}
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	if len(cli.copies) != 1 || cli.copies[0] != "/app/main.go -> main.go.bak" {
 		t.Errorf("copies = %q", cli.copies)
 	}
@@ -651,10 +712,351 @@ func TestCopyError(t *testing.T) {
 	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go
 	m, _ = update(m, tea.KeyPressMsg{Code: 'c', Text: "c"})
 	m, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "copy main.go: /home/user/main.go already exists") {
 		t.Errorf("expected the error on the status line: %q", got)
 	}
+}
+
+// newPreviewClient lists README next to main.go in the working directory.
+func newPreviewClient() *fakeClient {
+	cli := newFilesClient()
+	cli.files[""] = append(slices.Clone(workdir),
+		file.Info{Name: "README", Path: "/app/README", ContainerID: shorts[0].ID, DisplayName: "/app", Size: 7})
+	var rows []string
+	for i := range 50 {
+		rows = append(rows, fmt.Sprintf("row-%02d", i))
+	}
+	cli.contents = map[string]string{
+		"/app/main.go": "package main\n" + strings.Join(rows, "\n"),
+		"/app/README":  "readme\n",
+	}
+	return cli
+}
+
+// openPreview opens the files page at the given width and presses p on
+// main.go. The returned command fetches the preview.
+func openPreview(t *testing.T, cli *fakeClient, width int) (Model, tea.Cmd) {
+	t.Helper()
+	m := openFiles(t, cli)
+	m, _ = update(m, tea.WindowSizeMsg{Width: width, Height: 20})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'p', Text: "p"})
+	if cmd == nil {
+		t.Fatal("expected preview command")
+	}
+	return m, cmd
+}
+
+func TestPreviewOpensNextToList(t *testing.T) {
+	m, cmd := openPreview(t, newPreviewClient(), 120)
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "Loading…") || !strings.Contains(got, "static") {
+		t.Errorf("expected the loading preview next to the list: %q", got)
+	}
+	m = deliver(m, cmd)
+	got := ansi.Strip(m.View().Content)
+	for _, want := range []string{"static", "package main", "row-00", "close preview", "switch focus"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("view does not contain %q: %q", want, got)
+		}
+	}
+	if w, h := lipgloss.Width(got), lipgloss.Height(got); w != 120 || h != 20 {
+		t.Errorf("view is %dx%d, want 120x20", w, h)
+	}
+
+	// p on the same file closes the preview.
+	m, cmd = update(m, tea.KeyPressMsg{Code: 'p', Text: "p"})
+	if cmd != nil || m.previewing.Path != "" {
+		t.Error("p on the previewed file must close the preview")
+	}
+	if got := ansi.Strip(m.View().Content); strings.Contains(got, "package main") {
+		t.Errorf("preview still shown: %q", got)
+	}
+}
+
+func TestPreviewReplacedByOtherFile(t *testing.T) {
+	m, first := openPreview(t, newPreviewClient(), 120)
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // README
+	m, second := update(m, tea.KeyPressMsg{Code: 'p', Text: "p"})
+	if second == nil {
+		t.Fatal("expected preview command")
+	}
+	m = deliver(m, second)
+	// The content of main.go arrives late and must be dropped.
+	m = deliver(m, first)
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "readme") || strings.Contains(got, "package main") {
+		t.Errorf("expected the preview of README: %q", got)
+	}
+}
+
+func TestPreviewSkipsDirectories(t *testing.T) {
+	m := openFiles(t, newPreviewClient())
+	for _, rows := range []int{0, 1} { // .., static
+		mm := m
+		for range rows {
+			mm, _ = update(mm, tea.KeyPressMsg{Code: tea.KeyDown})
+		}
+		if mm, cmd := update(mm, tea.KeyPressMsg{Code: 'p', Text: "p"}); cmd != nil || mm.previewing.Path != "" {
+			t.Errorf("row %d: p on a directory must not open the preview", rows)
+		}
+	}
+}
+
+func TestPreviewEscClosesFirst(t *testing.T) {
+	m, cmd := openPreview(t, newPreviewClient(), 120)
+	m = deliver(m, cmd)
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.page != filesPage || m.previewing.Path != "" {
+		t.Fatal("first esc must close the preview and stay on the files page")
+	}
+	if f, _ := m.files.Selected(); f.Name != "main.go" {
+		t.Errorf("selected = %q, want the cursor kept on main.go", f.Name)
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.page != containersPage {
+		t.Error("second esc must go back to the containers")
+	}
+}
+
+func TestPreviewClosedByOpenDir(t *testing.T) {
+	m, cmd := openPreview(t, newPreviewClient(), 120)
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyUp}) // static
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.previewing.Path != "" {
+		t.Fatal("opening a directory must close the preview")
+	}
+	m = deliver(m, cmd)
+	if strings.Contains(ansi.Strip(m.View().Content), "package main") {
+		t.Error("stale preview was shown")
+	}
+}
+
+func TestPreviewFocus(t *testing.T) {
+	m, cmd := openPreview(t, newPreviewClient(), 120)
+	m = deliver(m, cmd)
+	tab := tea.KeyPressMsg{Code: tea.KeyTab}
+	down := tea.KeyPressMsg{Code: tea.KeyDown}
+
+	m, _ = update(m, tab)
+	m, _ = update(m, down)
+	if f, _ := m.files.Selected(); f.Name != "main.go" {
+		t.Errorf("selected = %q: down moved the list while the preview had the focus", f.Name)
+	}
+	if strings.Contains(ansi.Strip(m.View().Content), "package main") {
+		t.Error("down did not scroll the preview")
+	}
+
+	m, _ = update(m, tab)
+	m, _ = update(m, down)
+	if f, _ := m.files.Selected(); f.Name != "README" {
+		t.Errorf("selected = %q, want README after giving the focus back", f.Name)
+	}
+}
+
+func TestPreviewNarrow(t *testing.T) {
+	m, cmd := openPreview(t, newPreviewClient(), 80)
+	m = deliver(m, cmd)
+	got := ansi.Strip(m.View().Content)
+	if !strings.Contains(got, "package main") || strings.Contains(got, "static") {
+		t.Errorf("expected the preview in place of the list: %q", got)
+	}
+	if strings.Contains(got, "switch focus") {
+		t.Errorf("tab offered without a list to switch to: %q", got)
+	}
+	if w, h := lipgloss.Width(got), lipgloss.Height(got); w != 80 || h != 20 {
+		t.Errorf("view is %dx%d, want 80x20", w, h)
+	}
+
+	// Keys go to the preview, which covers the list.
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	if f, _ := m.files.Selected(); f.Name != "main.go" {
+		t.Errorf("selected = %q: down moved the hidden list", f.Name)
+	}
+
+	// Widening the window shows the list next to the preview.
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "static") {
+		t.Errorf("expected the list next to the preview: %q", got)
+	}
+	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 20})
+
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "static") || m.page != filesPage {
+		t.Errorf("esc must bring back the list: %q", got)
+	}
+}
+
+func TestPreviewError(t *testing.T) {
+	cli := newPreviewClient()
+	cli.readErr = errors.New("permission denied")
+	m, cmd := openPreview(t, cli, 120)
+	m = deliver(m, cmd)
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "Error: permission denied") {
+		t.Errorf("expected the error in the preview: %q", got)
+	}
+}
+
+// spinnerTick returns the spinner tick in ms, or nil if there is none.
+func spinnerTick(ms []tea.Msg) tea.Msg {
+	for _, msg := range ms {
+		if tick, ok := msg.(spinner.TickMsg); ok {
+			return tick
+		}
+	}
+	return nil
+}
+
+func TestSpinnerWhileListing(t *testing.T) {
+	m := newModel(newFilesClient())
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 20})
+	m = runInit(m)
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'f', Text: "f"})
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "⠋ Files") {
+		t.Errorf("expected the spinner in the title: %q", got)
+	}
+	ms := msgs(cmd)
+	tick := spinnerTick(ms)
+	if tick == nil {
+		t.Fatal("expected the spinner to start")
+	}
+
+	// A tick while loading advances the frame and schedules the next one.
+	m, next := update(m, tick)
+	if next == nil {
+		t.Error("spinner stopped while loading")
+	}
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "⠙ Files") {
+		t.Errorf("expected the next frame: %q", got)
+	}
+
+	m = apply(m, ms)
+	if got := ansi.Strip(m.View().Content); strings.Contains(got, "⠙") || !strings.Contains(got, "/app") {
+		t.Errorf("spinner still shown after the listing arrived: %q", got)
+	}
+	// The next tick ends the loop.
+	if m, next = update(m, tick); next != nil || m.spinning {
+		t.Error("spinner kept running with nothing to load")
+	}
+
+	// Opening a directory starts it again.
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // static
+	m, cmd = update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if spinnerTick(msgs(cmd)) == nil {
+		t.Error("expected the spinner to start for a directory")
+	}
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "⠙ /app") {
+		t.Errorf("expected the spinner in front of the kept path: %q", got)
+	}
+}
+
+func TestSpinnerWhilePreviewLoading(t *testing.T) {
+	m := openFiles(t, newPreviewClient())
+	m, _ = update(m, spinner.TickMsg{}) // ends the loop started for the listing
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go
+	m, cmd := update(m, tea.KeyPressMsg{Code: 'p', Text: "p"})
+	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "⠋ main.go") || strings.Contains(got, "⠋ /app") {
+		t.Errorf("expected the spinner in the preview title only: %q", got)
+	}
+	ms := msgs(cmd)
+	if spinnerTick(ms) == nil {
+		t.Error("expected the spinner to start")
+	}
+	m = apply(m, ms)
+	if got := ansi.Strip(m.View().Content); strings.Contains(got, "⠋") {
+		t.Errorf("spinner still shown after the content arrived: %q", got)
+	}
+}
+
+func TestSpinnerSingleLoop(t *testing.T) {
+	m := openFiles(t, newPreviewClient()) // the listing's tick was never delivered
+	if !m.spinning {
+		t.Fatal("expected the spinner loop to be marked running")
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // static
+	_, cmd := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if spinnerTick(msgs(cmd)) != nil {
+		t.Error("a second request started a second spinner loop")
+	}
+}
+
+// findMsg runs cmd and returns the first message of type T it produces.
+func findMsg[T tea.Msg](t *testing.T, cmd tea.Cmd) T {
+	t.Helper()
+	for _, msg := range msgs(cmd) {
+		if msg, ok := msg.(T); ok {
+			return msg
+		}
+	}
+	var zero T
+	t.Fatalf("no %T in command", zero)
+	return zero
+}
+
+func TestAbandonedFileRequestsCanceled(t *testing.T) {
+	m := openFiles(t, newPreviewClient())
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // static
+	m, listing := update(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go, in the kept listing
+	m, preview := update(m, tea.KeyPressMsg{Code: 'p', Text: "p"})
+	// Closing the preview cancels its request, leaving the page cancels the
+	// listing.
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if msg := findMsg[previewMsg](t, preview); !errors.Is(msg.err, context.Canceled) {
+		t.Errorf("preview err = %v, want canceled", msg.err)
+	}
+	_, _ = update(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if msg := findMsg[filesMsg](t, listing); !errors.Is(msg.err, context.Canceled) {
+		t.Errorf("listing err = %v, want canceled", msg.err)
+	}
+}
+
+func TestReplacedFileRequestsCanceled(t *testing.T) {
+	m := openFiles(t, newPreviewClient())
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // main.go
+	m, first := update(m, tea.KeyPressMsg{Code: 'p', Text: "p"})
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyDown}) // README
+	_, second := update(m, tea.KeyPressMsg{Code: 'p', Text: "p"})
+	if msg := findMsg[previewMsg](t, first); !errors.Is(msg.err, context.Canceled) {
+		t.Errorf("replaced preview err = %v, want canceled", msg.err)
+	}
+	if msg := findMsg[previewMsg](t, second); msg.err != nil {
+		t.Errorf("current preview err = %v", msg.err)
+	}
+}
+
+func TestFileRequestTimeout(t *testing.T) {
+	var deadline time.Time
+	cli := &deadlineClient{fakeClient: newPreviewClient(), deadline: &deadline}
+	for name, cmd := range map[string]tea.Cmd{
+		"listing": func() tea.Cmd { c, _ := fetchFiles(cli, 1, file.Info{ContainerID: shorts[0].ID}); return c }(),
+		"preview": func() tea.Cmd { c, _ := fetchPreview(cli, 1, file.Info{Path: "/app/README"}); return c }(),
+	} {
+		start := time.Now()
+		cmd()
+		if got := deadline.Sub(start); got < fileTimeout-time.Second || got > fileTimeout+time.Second {
+			t.Errorf("%s: deadline in %v, want %v", name, got, fileTimeout)
+		}
+	}
+}
+
+// deadlineClient records the deadline of the last file request.
+type deadlineClient struct {
+	*fakeClient
+	deadline *time.Time
+}
+
+func (c *deadlineClient) FilesIn(ctx context.Context, root file.Info) ([]file.Info, error) {
+	*c.deadline, _ = ctx.Deadline()
+	return c.fakeClient.FilesIn(ctx, root)
+}
+
+func (c *deadlineClient) ReadFile(ctx context.Context, f file.Info, limit int64) ([]byte, bool, error) {
+	*c.deadline, _ = ctx.Deadline()
+	return c.fakeClient.ReadFile(ctx, f, limit)
 }
 
 func TestTerminalKey(t *testing.T) {
@@ -808,7 +1210,7 @@ func TestActionError(t *testing.T) {
 	m = runInit(m)
 
 	_, cmd := update(m, tea.KeyPressMsg{Code: 'x', Text: "x"})
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	got := ansi.Strip(m.View().Content)
 	if !strings.Contains(got, "stop web: permission denied") || !strings.Contains(got, "nginx") {
 		t.Errorf("expected the error on the status line below the containers: %q", got)
@@ -964,7 +1366,7 @@ func openInspect(t *testing.T, cli *fakeClient) Model {
 	if cmd == nil {
 		t.Fatal("expected details command")
 	}
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	return m
 }
 
@@ -1008,14 +1410,14 @@ func TestInspectRefresh(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected details command after 'r'")
 	}
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "exited") {
 		t.Errorf("expected the refreshed state: %q", got)
 	}
 
 	cli.detailsErr = errors.New("boom")
 	m, cmd = update(m, tea.KeyPressMsg{Code: 'r', Text: "r"})
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	got := ansi.Strip(m.View().Content)
 	if !strings.Contains(got, "Error: boom") || !strings.Contains(got, "exited") {
 		t.Errorf("expected the error above the kept details: %q", got)
@@ -1033,7 +1435,7 @@ func TestInspectBack(t *testing.T) {
 	}
 
 	// The details requested before esc arrive late and must be dropped.
-	m, _ = update(m, cmd())
+	m = deliver(m, cmd)
 	if strings.Contains(ansi.Strip(m.inspect.View()), "GENERAL") {
 		t.Error("stale details were applied")
 	}

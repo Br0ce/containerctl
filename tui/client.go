@@ -16,6 +16,7 @@ type Client interface {
 	Logs(ctx context.Context, id string) (client.LogSeq, context.CancelFunc)
 	FilesIn(ctx context.Context, root file.Info) ([]file.Info, error)
 	CopyFrom(ctx context.Context, src file.Info, dst string) (string, error)
+	ReadFile(ctx context.Context, f file.Info, limit int64) ([]byte, bool, error)
 	Details(ctx context.Context, id string) (container.Details, error)
 	Stats(ctx context.Context, id string) client.StatsSeq
 	Terminal(ctx context.Context, id string, in io.Reader, out io.Writer) error
